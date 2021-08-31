@@ -10,7 +10,7 @@ from pygame import gfxdraw
 import numpy as np
 
 
-num_particles = 5
+num_particles = 4
 num_steps = 10000
 scale = 1e+9
 x_lim = 1e-9 
@@ -19,7 +19,10 @@ x_lim = x_lim*scale
 y_lim = y_lim*scale
 WINDOW_WIDTH = 600
 WINDOW_HEIGHT = 600
-DT = 0.001
+DT = 0.005
+radius = 5.29177210903e-11
+scale_factor = 10
+
 
 
 
@@ -234,7 +237,7 @@ def two_particles_bounce(p1, p2):
     else:
         return False
 
-def lj_force(r, epsilon=3*Particle.radius, sigma=2*Particle.radius):
+def lj_force(r, epsilon=0.09, sigma=2.45):
     """
     Implementation of the Lennard-Jones potential 
     to calculate the force of the interaction.
@@ -242,10 +245,8 @@ def lj_force(r, epsilon=3*Particle.radius, sigma=2*Particle.radius):
     The force scalar is the derivative wrt to R 
     f = -partial(LJ_potential)/partial*r
     """
-    return 48 * epsilon * np.power(
-        sigma, 12) / np.power(
-        r, 13) - 24 * epsilon * np.power(
-        sigma, 6) / np.power(r, 7)
+    r = 1/Particle.radius * r
+    return 48 * epsilon * (pow(sigma,12)/pow(r,13)-24*epsilon*pow(sigma,6)/pow(r,7))
 
 
 ##################
@@ -269,7 +270,7 @@ def make_particles(n):
         p.y = uniform(0, y_lim)
 
         # Assign random velocities within a bound
-        temp_scale = 1
+        temp_scale = 0.5
         p.vx = temp_scale*uniform(-x_lim, x_lim)
         p.vy = temp_scale*uniform(-y_lim, y_lim)
 
