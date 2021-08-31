@@ -2,45 +2,34 @@
 # Variables and Imports #
 ###########################
 from random import random, seed, shuffle, uniform
-from math import ceil, sqrt
+from math import ceil, sqrt, atan2, cos, inf, pi, sin
 from functools import reduce
 from time import time
 import pygame
 from pygame import gfxdraw
+import numpy as np
 
 
-# if you get an error related to tkinter, run `brew install python-tk`
-# for graphics we are using graphics.py to install run `pip install graphics.py`
-num_particles = 100
+num_particles = 5
 num_steps = 10000
-x_lim = 1e-8
-y_lim = 1e-8
+scale = 1e+9
+x_lim = 1e-9 
+y_lim = 1e-9
+x_lim = x_lim*scale
+y_lim = y_lim*scale
 WINDOW_WIDTH = 600
 WINDOW_HEIGHT = 600
+DT = 0.001
 
-###########################
-# MATH FUNCTIONS #
-###########################
-def distance_point_to_wall(WALL_START, WALL_END, x, y):
-    wall_start_x, wall_start_y = WALL_START
-    wall_end_x, wall_end_y = WALL_END
-     
-    d = abs((wall_end_x - wall_start_x)*(wall_start_y-y)-(wall_start_x-x)*(wall_end_y-wall_start_y))/sqrt((wall_end_x-wall_start_x)**2 + (wall_end_y-wall_start_y)**2)
-    return d
 
-def closer_than_radius(distance):
-    if abs(distance) <= Particle.radius:
-        # print("closer")
-        return 1
-    else:
-        # print("further")
-        return 0
+
 
 ###########################
 # Graphics #
 ###########################
 BLUE = [0, 0, 255]
 WHITE = [255, 255, 255]
+BLACK = [0, 0, 0]
 def draw_circle(window, x, y, radius, color):
     # Draw anti-aliased circle
     gfxdraw.aacircle(window, x, y, radius, color)
@@ -68,7 +57,11 @@ class Particle(object):
 
     radius = 5.29177210903e-11
 
-    dt = 0.005
+    radius = radius*scale
+
+    int_radius = int(ceil(radius/x_lim* WINDOW_HEIGHT))
+
+    dt = DT
 
 
     def __init__(self, x, y, vx, vy, ax, ay, id):
@@ -80,9 +73,12 @@ class Particle(object):
         self.ay = ay
         self.oldx = None
         self.oldy = None
-        self.new_ax = None
-        self.new_ay = None
+        self.new_ax = 0
+        self.new_ay = 0
         self.id = id
+        self.collision = False
+        self.oldx = x
+        self.oldy = y
 
     def draw(self, window, rad):
             """
@@ -92,21 +88,30 @@ class Particle(object):
             rad is the radius of the particle"""
             x_coord = int(self.x/x_lim * WINDOW_WIDTH)
             y_coord = int(self.y/y_lim * WINDOW_HEIGHT)
+            print("x_coord " + str(x_coord))
+            print("y_coord"+str(y_coord))
+            self.print()
             # if abs(x_coord) > WINDOW_WIDTH or abs(y_coord) > WINDOW_HEIGHT or x_coord < 0 or y_coord < 0:
             #     x_coord = x_lim/2 * WINDOW_WIDTH
             #     y_coord = y_lim/2 * WINDOW_WIDTH
             #     return
-            radius = int(self.radius/x_lim * WINDOW_HEIGHT)
-            draw_circle(window, x_coord, y_coord, radius, BLUE)
+            draw_circle(window, x_coord, y_coord, Particle.int_radius, BLUE)
 
     def move(self):
-        self.oldx, self.oldy = self.x, self.y
+        """ if a particle collides, it cannot continue with the last vx/vy components
+        Therefore we must update the vx/vy components using the new acceleration, and then move
+        This still has some issues, such as a particle might not move enough to get outside the 
+        radius of another particle
+        """
+        
         self.x = self.x + self.vx * self.dt + 0.5*self.ax*self.dt**2
         self.y = self.y + self.vy * self.dt + 0.5*self.ay*self.dt**2
         self.vx = self.vx + (self.ax + self.new_ax)/2 * self.dt
         self.vy = self.vy + (self.ay + self.new_ay)/2 * self.dt
         self.ax = self.new_ax
         self.ay = self.new_ay
+        self.oldx = self.x
+        self.oldy = self.y
     
     def print(self):
         print("x: " + str(self.x))
@@ -115,6 +120,8 @@ class Particle(object):
         print("vy: " + str(self.vy))
         print("ax: " + str(self.ax))
         print("ay: " + str(self.ay))
+        print("new_ax: " + str(self.new_ax))
+        print("new_ay: " + str(self.new_ay))
     
     def compute_wall_forces(self):
         BOTTOM_LEFT = (0, 0)
@@ -164,23 +171,81 @@ class Particle(object):
         horizontal_count = bottom_wall + top_wall
         # print("vertical_count" + str(vertical_count))
         # print("horizontal_count" + str(horizontal_count))
-        self.new_ax = 0
-        self.new_ay = 0
         # corner
         if vertical_count + horizontal_count > 1:
             # here we need to compute new vx and vy and convert to ax and ay
-            self.new_ax += -2*self.vx/Particle.dt
-            self.new_ay += -2*self.vy/Particle.dt
+            self.new_ax = -2*self.vx/Particle.dt
+            self.new_ay = -2*self.vy/Particle.dt
             return
         # vertical wall
         elif vertical_count > 0:
-            self.new_ax += -2*self.vx/Particle.dt
+            self.new_ax = -2*self.vx/Particle.dt
         #horizontal wall
         elif horizontal_count > 0:
-            self.new_ay += -2*self.vy/Particle.dt
+            self.new_ay = -2*self.vy/Particle.dt
+            self.print()
         return
 
+    def compute_lj_forces(self, other_p):
+        """
+        Calculate the acceleration on each 
+        particle as a  result of each other 
+        particle. 
+        """ 
+        # calculate x and y distances between the two points
+        rx = self.x - other_p.x
+        ry = self.y - other_p.y
+        r2 = sqrt(rx*rx+ry*ry)
 
+        lj_f = lj_force(r2)
+
+        self.new_ax += (lj_f*(rx/r2))/self.mass
+        self.new_ay += (lj_f*(ry/r2))/self.mass
+        other_p.new_ax -= (lj_f*(rx/r2))/self.mass
+        other_p.new_ay -= (lj_f*(ry/r2))/self.mass
+        return
+
+    
+###########################
+# MATH FUNCTIONS #
+###########################
+def distance_point_to_wall(WALL_START, WALL_END, x, y):
+    wall_start_x, wall_start_y = WALL_START
+    wall_end_x, wall_end_y = WALL_END
+     
+    # avoid square root on the bottom (expensive operation) by squaring the top and squaring in closer_than_radius_function
+    d = abs((wall_end_x - wall_start_x)*(wall_start_y-y)-(wall_start_x-x)*(wall_end_y-wall_start_y))**2/((wall_end_x-wall_start_x)**2 + (wall_end_y-wall_start_y)**2)
+    return d
+
+radius_dist = (Particle.radius)**2
+def closer_than_radius(distance):
+    if distance <= radius_dist:
+        # print("closer")
+        return 1
+    else:
+        # print("further")
+        return 0
+
+collision_distance = (2*Particle.radius)**2
+def two_particles_bounce(p1, p2):
+    if (p2.x-p1.x) < radius_dist:
+        if (p2.x-p1.x)**2 + (p2.y-p1.y)**2 <= collision_distance:
+            return True
+    else:
+        return False
+
+def lj_force(r, epsilon=3*Particle.radius, sigma=2*Particle.radius):
+    """
+    Implementation of the Lennard-Jones potential 
+    to calculate the force of the interaction.
+
+    The force scalar is the derivative wrt to R 
+    f = -partial(LJ_potential)/partial*r
+    """
+    return 48 * epsilon * np.power(
+        sigma, 12) / np.power(
+        r, 13) - 24 * epsilon * np.power(
+        sigma, 6) / np.power(r, 7)
 
 
 ##################
@@ -204,12 +269,25 @@ def make_particles(n):
         p.y = uniform(0, y_lim)
 
         # Assign random velocities within a bound
-        p.vx = 3*uniform(-x_lim, x_lim)
-        p.vy = 3*uniform(-y_lim, y_lim)
+        temp_scale = 1
+        p.vx = temp_scale*uniform(-x_lim, x_lim)
+        p.vy = temp_scale*uniform(-y_lim, y_lim)
 
         p.ax = 0
         p.ay = 0
-
+    # make sure no particles are overlapping
+    overlap = True
+    while overlap:
+        collision_detected = False
+        for i, p in enumerate(particles):
+            for p2 in particles[i+1:]:
+                if sqrt((p.x-p2.x)**2 + (p.y-p2.y)**2) <= 2*Particle.radius:
+                    p.x = uniform(0, x_lim)
+                    p.y = uniform(0, x_lim)
+                    collision_detected = True
+        if not collision_detected:
+            overlap = False
+                
     return particles
 
 def init_graphics(particles):
@@ -242,23 +320,41 @@ def serial_simulation(n, steps, update_interval=1, label_particles=False):
     
     # Perform simulation
     start = time()
-    for step in range(steps):
+    running = True
+
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                running = False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_p:
+                    pause()
+                elif event.key == pygame.K_ESCAPE:
+                    running = False
 
         window.fill(WHITE)
-        #need to save particle coordinates
         for p in particles:
             p.draw(window, Particle.radius)
             if label_particles:
-                label = myfont.render(str(p.id), 1, BLUE)
+                label = myfont.render(str(p.id), 2, BLACK )
                 window.blit(label, (p.x/x_lim*WINDOW_WIDTH, p.y/y_lim*WINDOW_HEIGHT))
 
         #compute forces
-        for p in particles:
-            p.compute_wall_forces()
+        for i, p in enumerate(particles):
+            p.new_ax = 0
+            p.new_ay = 0
+            p.compute_wall_forces() 
+
+            #compute collision interactions
+            for p2 in particles[i+1:]:
+                p.compute_lj_forces(p2)
+                
 
         # Move particles
         for p in particles:
             p.move()
+            p.collision = False
 
         bottom_left_corner = myfont.render("0,0", 1, BLUE)
         window.blit(bottom_left_corner, (0, 0))
@@ -275,8 +371,21 @@ def serial_simulation(n, steps, update_interval=1, label_particles=False):
     end = time()
 
     print('serial simulation took {0} seconds'.format(end - start))
-    
 
+def pause():
+    paused = True
+
+    while paused:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_c:
+                    paused == False
+                    return
+                elif event.key == pygame.K_q:
+                    pygame.quit()
+        
 ##########################
 # MAIN #
 ##########################
@@ -284,7 +393,7 @@ def serial_simulation(n, steps, update_interval=1, label_particles=False):
 def run():
     max_particle_speed = Particle.dt * Particle.radius
     print("max_particle_speed" + str(max_particle_speed))
-    serial_simulation(num_particles, num_steps, 1, False)
+    serial_simulation(num_particles, num_steps, 1, True)
 
 # d= distance_point_to_wall((0,0),(10,0),10,10)
 # print(d)
