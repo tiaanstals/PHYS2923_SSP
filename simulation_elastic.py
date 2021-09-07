@@ -9,9 +9,10 @@ import pygame
 from pygame import gfxdraw
 import numpy as np
 
-#A comment
+#have more particles
 num_particles = 4
 num_steps = 10000
+#play around with scales
 scale = 1e+8
 x_lim = 1e-9
 y_lim = 1e-9
@@ -128,6 +129,8 @@ class Particle(object):
         print("new_ax: " + str(self.new_ax))
         print("new_ay: " + str(self.new_ay))
     
+
+    # CHANGE 1
     def compute_wall_forces(self):
         BOTTOM_LEFT = (0, 0)
         BOTTOM_RIGHT = (x_lim, 0)
@@ -174,11 +177,11 @@ class Particle(object):
         ## First check horizontal walls
         vertical_count = left_wall + right_wall
         horizontal_count = bottom_wall + top_wall
-        # print("vertical_count" + str(vertical_count))
-        # print("horizontal_count" + str(horizontal_count))
-        # corner
+
+        # replace these new accelerations with boltzman distributed velocities
         if vertical_count + horizontal_count > 1:
             # here we need to compute new vx and vy and convert to ax and ay
+            # choose random velocity
             self.new_ax = -2*self.vx/Particle.dt
             self.new_ay = -2*self.vy/Particle.dt
             return
@@ -201,81 +204,11 @@ class Particle(object):
         # if they collided previous round do nothing
         if two_particles_bounce(self, other_p):
             # https://en.wikipedia.org/wiki/Elastic_collision
-            print(self.id)
-            v1 = np.array([self.vx, self.vy])
-            print("V1==============V1")
-            print("V1 ID" + str(self.id))
-            print("Before" + str(v1))
-            
-            v2 = np.array([other_p.vx, other_p.vy])
-            print("V2==============V2")
-            print("Before" + str(v2))
-
-            # note here we are doing p2-p1
-            
-            normal_vector = np.array([other_p.x-self.x,other_p.y-self.y])
-            print("NORMAL==============NORMAL")
-            print(str(normal_vector))
-
-            
-            unit_normal = normal_vector/sqrt(normal_vector[0]**2 + normal_vector[1]**2)
-            print("unit_normal==============unit_normal")
-            print(str(unit_normal))
-
-
-            unit_tangent = np.array([-unit_normal[1], unit_normal[0]])
-            print("unit_tangent==============unit_tangent")
-            print(str(unit_tangent))
-
-            # negative s
-            # ign since we want component of velocity facing towards the particle
-            v1_normal = unit_normal @ v1
-            v1_tangent = unit_tangent @ v1
-            print("v1_normal==============v1_normal")
-            print(str(v1_normal))
-            print("v1_tangent==============v1_tangent")
-            print(str(v1_tangent))
-
-            v2_normal = unit_normal @ v2
-            v2_tangent = unit_tangent @ v2
-            print("v2_normal==============v2_normal")
-            print(str(v2_normal))
-            print("v2_tangent==============v2_tangent")
-            print(str(v2_tangent))
-
-            v_1_normal_hold = v1_normal
-            v1_normal = v2_normal
-            v2_normal = v_1_normal_hold
-            print("UPDATED v1_normal============== UPDATED v1_normal")
-            print(str(v1_normal))
-            print("UPDATED v2_normal============== UPDATED v2_normal")
-            print(str(v2_normal))
-
-            v1_normal_vec = v1_normal*(unit_normal)
-            v1_tangent_vec = v1_tangent*unit_tangent
-
-            v2_normal_vec = v2_normal*unit_normal
-            v2_tangent_vec = v2_tangent*unit_tangent
-
-            v1_final = v1_normal_vec + v1_tangent_vec
-            v2_final = v2_normal_vec + v2_tangent_vec
-
-            
-            
-            print("After" + str(v1_final))
-            print()
-            v1_change = v1_final - v1
-            v2_change = v2_final- v2
-            
-            i_hat = np.array([1,0])
-            j_hat = np.array([0,1])
-
-            self.new_ax += (v1_change @ i_hat)/Particle.dt
-            self.new_ay += (v1_change @ j_hat)/Particle.dt
-            # self.print()
-
-            other_p.new_ax += (v2_change @ i_hat)/Particle.dt
-            other_p.new_ay += (v2_change @ j_hat)/Particle.dt
+            # 1. pick two new velocities from the boltzman distribution
+            # 2. Figure out the change in acceleration that is needed
+            # assign new_ax and new_ay for the two particles
+            vx = boltzman_velocity()*scaling
+            new_ax = vx/Particle.dt
             self.collision = True
             other_p.collision = True
         return
@@ -325,8 +258,6 @@ def make_particles(n):
 
     for p in particles:
         # Distribute particles randomly in our box
-        x_coord = uniform(0, x_lim)
-        y_coord = uniform(0, y_lim)
         p.x = uniform(0, x_lim)
         p.y = uniform(0, y_lim)
 
