@@ -8,9 +8,14 @@ from time import time
 import pygame
 from pygame import gfxdraw
 import numpy as np
+import matplotlib.pyplot as plt
+from scipy import integrate
+import sympy as sym
+import scipy.stats as sp
+import random
 
 #have more particles
-num_particles = 4
+num_particles = 1
 num_steps = 10000
 #play around with scales
 scale = 1e+8
@@ -36,6 +41,52 @@ def draw_circle(window, x, y, radius, color):
     gfxdraw.aacircle(window, x, y, radius, color)
     gfxdraw.filled_circle(window, x, y, radius, color)
             
+
+#################################################
+# Maxwell Boltzmann Distribution #added by Conway
+#################################################
+m = 1.673e-27  #mass in kg
+
+N = 6.022e23  #avogadros number
+
+k = 1.381e-23  #boltzmann constant
+
+T = 100 #Temperature
+
+R = 8.314 #Gas constant
+
+c = 4e12 #c is the scaling factor so that the velocity dont go crazy(between 0 and xlim)
+
+pi = np.pi
+
+rms = (1 / c) * np.sqrt((3 * R * T) / (N * m))
+
+y = np.linspace(0, 3 * rms)
+
+# this is the scaled maxwell boltzmann equation
+def f(v):
+    return (4 * pi * (m / (2 * pi * k * T)) ** (3 / 2)) * ((c * v) ** 2) * np.exp((-m * ((c * v) ** 2) / (2 * k * T)))
+
+#below is the rejection sampling technique
+def g(x):
+    return (1 / (3 * rms))
+
+M = 1.1 * np.max(f(y) / g(y))
+
+
+X = []
+n = 100000
+
+for i in range (n):
+    x = np.random.uniform(0, 3 * rms)
+    if f(x)/(M*g(x)) > np.random.uniform(0, 1):
+        X.append(x)
+        
+density = []
+for numbers in X:
+    density.append(numbers / len(X))
+    
+    
 
 ###########################
 # Particle Representation #
@@ -76,6 +127,9 @@ class Particle(object):
         self.oldy = None
         self.new_ax = 0
         self.new_ay = 0
+        #added by Conway
+        self.new_vx = 0
+        self.new_vy = 0
         self.id = id
         self.collision = False
         self.oldx = x
@@ -107,6 +161,9 @@ class Particle(object):
             self.vy = self.vy + (self.ay + self.new_ay)/2 * self.dt
             self.x = self.oldx + self.vx * self.dt + 0.5*self.ax*self.dt**2
             self.y = self.oldy + self.vy * self.dt + 0.5*self.ay*self.dt**2
+            #added by Conway
+            self.vx = self.new_vx  #added new variables new_vx and new_vy for new velocity after collision
+            self.vy = self.new_vy
             self.ax = self.new_ax
             self.ay = self.new_ay
         else:
@@ -114,6 +171,9 @@ class Particle(object):
             self.y = self.y + self.vy * self.dt + 0.5*self.ay*self.dt**2
             self.vx = self.vx + (self.ax + self.new_ax)/2 * self.dt
             self.vy = self.vy + (self.ay + self.new_ay)/2 * self.dt
+            #added by Conway
+            self.vx = self.new_vx
+            self.vy = self.new_vy
             self.ax = self.new_ax
             self.ay = self.new_ay
         self.oldx = self.x
@@ -126,6 +186,9 @@ class Particle(object):
         print("vy: " + str(self.vy))
         print("ax: " + str(self.ax))
         print("ay: " + str(self.ay))
+        #added by Conway
+        print('new_vx' + str(self.new_vx))
+        print('new_vy' + str(self.new_vy))
         print("new_ax: " + str(self.new_ax))
         print("new_ay: " + str(self.new_ay))
     
@@ -137,8 +200,11 @@ class Particle(object):
         TOP_LEFT = (0, y_lim)
         TOP_RIGHT = (x_lim, y_lim)
         
-        horizontal_count = 0
-        vertical_count = 0
+        #added by Conway
+        left_count = 0
+        right_count = 0
+        top_count = 0
+        bottom_count = 0
 
         #compute distances
         d_left_wall = distance_point_to_wall(BOTTOM_LEFT, TOP_LEFT, self.x, self.y)
@@ -175,23 +241,80 @@ class Particle(object):
         
 
         ## First check horizontal walls
-        vertical_count = left_wall + right_wall
-        horizontal_count = bottom_wall + top_wall
+        #added by Conway
+        left_count = left_wall
+        right_count = right_wall
+        bottom_count = bottom_wall
+        top_count = top_wall
 
         # replace these new accelerations with boltzman distributed velocities
-        if vertical_count + horizontal_count > 1:
+        if left_count + bottom_count > 1:
             # here we need to compute new vx and vy and convert to ax and ay
             # choose random velocity
-            self.new_ax = -2*self.vx/Particle.dt
-            self.new_ay = -2*self.vy/Particle.dt
-            return
-        # vertical wall
-        elif vertical_count > 0:
-            self.new_ax = -2*self.vx/Particle.dt
-        #horizontal wall
-        elif horizontal_count > 0:
-            self.new_ay = -2*self.vy/Particle.dt
-            self.print()
+            #added by Conway
+            new_v = random.sample(X, 1)
+            angle = np.random.uniform(0, pi / 2)
+            self.new_vx = new_v[0] * np.cos(angle)
+            self.new_vy = new_v[0] * np.sin(angle)
+            self.new_ax = (self.new_vx - self.vx) / Particle.dt
+            self.new_ay = (self.new_vy - self.vy) / Particle.dt
+            
+        #bottom right
+        elif right_count + bottom_count > 1:
+            new_v = random.sample(X, 1)
+            angle = np.random.uniform(0, pi / 2)
+            self.new_vx = -1 * (new_v[0] * np.cos(angle))
+            self.new_vy = new_v[0] * np.sin(angle)
+            self.new_ax = (self.new_vx - self.vx) / Particle.dt
+            self.new_ay = (self.new_vy - self.vy) / Particle.dt
+        #top left
+        elif left_count + top_count > 1:
+            new_v = random.sample(X, 1)
+            angle = np.random.uniform(0, pi / 2)
+            self.new_vx = new_v[0] * np.cos(angle)
+            self.new_vy = -1 * (new_v[0] * np.sin(angle))
+            self.new_ax = (self.new_vx - self.vx) / Particle.dt
+            self.new_ay = (self.new_vy - self.vy) / Particle.dt
+        #top right
+        elif right_count + top_count > 1:
+            new_v = random.sample(X, 1)
+            angle = np.random.uniform(0, pi / 2)
+            self.new_vx = -1 * (new_v[0] * np.cos(angle))
+            self.new_vy = -1 * (new_v[0] * np.sin(angle))
+            self.new_ax = (self.new_vx - self.vx) / Particle.dt
+            self.new_ay = (self.new_vy - self.vy) / Particle.dt
+        #left
+        elif left_count > 0:
+            new_v = random.sample(X, 1)
+            angle = np.random.uniform(-pi / 2, pi / 2)
+            self.new_vx = new_v[0] * np.cos(angle)
+            self.new_vy = new_v[0] * np.sin(angle)
+            self.new_ax = (self.new_vx - self.vx) / Particle.dt
+            self.new_ay = (self.new_vy - self.vy) / Particle.dt
+        #right
+        elif right_count > 0:
+            new_v = random.sample(X, 1)
+            angle = np.random.uniform(-pi / 2, pi / 2)
+            self.new_vx = -1 * (new_v[0] * np.cos(angle))
+            self.new_vy = new_v[0] * np.sin(angle)
+            self.new_ax = (self.new_vx - self.vx) / Particle.dt
+            self.new_ay = (self.new_vy - self.vy) / Particle.dt
+        #bottom
+        elif bottom_count > 0:
+            new_v = random.sample(X, 1)
+            angle = np.random.uniform(0, pi)
+            self.new_vx = (new_v[0] * np.cos(angle))
+            self.new_vy = new_v[0] * np.sin(angle)
+            self.new_ax = (self.new_vx - self.vx) / Particle.dt
+            self.new_ay = (self.new_vy - self.vy) / Particle.dt
+        #top
+        elif top_count > 0:
+            new_v = random.sample(X, 1)
+            angle = np.random.uniform(0, pi)
+            self.new_vx = new_v[0] * np.cos(angle)
+            self.new_vy = -1 * (new_v[0] * np.sin(angle))
+            self.new_ax = (self.new_vx - self.vx) / Particle.dt
+            self.new_ay = (self.new_vy - self.vy) / Particle.dt
         return
 
     def compute_elastic_collision_forces(self, other_p):
@@ -205,16 +328,19 @@ class Particle(object):
         if two_particles_bounce(self, other_p):
             # https://en.wikipedia.org/wiki/Elastic_collision
             # 1. pick two new velocities from the boltzman distribution
-            # 2. Figure out the change in acceleration that is needed
-            # assign new_ax and new_ay for the two particles
-            vx = boltzman_velocity()*scaling
-            new_ax = vx/Particle.dt
+            #added by Conway
+            new_v = random.sample(X, 1)
+            angle = np.random.uniform(0, 2 * pi)
+            self.new_vx = new_v[0] * np.cos(angle)
+            self.new_vy = new_v[0] * np.sin(angle)
+            self.new_ax = (self.new_vx - self.vx) / Particle.dt
+            self.new_ay = (self.new_vy - self.vy) / Particle.dt
             self.collision = True
             other_p.collision = True
         return
 
                 # self.move_after_collision(other_p,v1_final, v2_final)
-    #something
+
 ###########################
 # MATH FUNCTIONS #
 ###########################
@@ -297,7 +423,7 @@ def serial_simulation(n, steps, update_interval=1, label_particles=False):
     # Initialize visualization
     window = init_graphics(particles)
     clock = pygame.time.Clock()
-    myfont = pygame.font.Font('Roboto-Medium.ttf', 10)
+    myfont = pygame.font.SysFont('Roboto-Medium.ttf', 10)
     
     # Perform simulation
     start = time()
