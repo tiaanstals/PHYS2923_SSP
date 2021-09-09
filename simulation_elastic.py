@@ -384,6 +384,10 @@ def make_particles(n):
 
     for p in particles:
         # Distribute particles randomly in our box
+<<<<<<< Updated upstream
+=======
+       
+>>>>>>> Stashed changes
         p.x = uniform(0, x_lim)
         p.y = uniform(0, y_lim)
 
