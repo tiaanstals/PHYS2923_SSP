@@ -12,7 +12,7 @@ import pygame_widgets
 from pygame_widgets.slider import Slider
 
 num_particles = 30
-num_steps = 5000
+num_steps = 10000
 scale = 1e+9
 x_lim = 2e-9 
 y_lim = 2e-9
@@ -360,7 +360,7 @@ def make_particles(n, temp_scale, nucleation):
 def serial_simulation(n, steps, update_interval=1, label_particles=False, normalize_energy=True, nucleation=False, speed_up=5):
 
     # Create particles
-    temp_scale = 1
+    temp_scale = 0.2
     particles = make_particles(num_particles, temp_scale, nucleation)
     initial_energy = reduce(lambda x, p: x + p.energy, particles, 0)
 
