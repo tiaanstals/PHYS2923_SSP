@@ -2,7 +2,7 @@
 # Variables and Imports #
 ###########################
 from random import random, seed, shuffle, uniform
-from math import ceil, sqrt, atan2, cos, inf, pi, sin
+from math import ceil, sqrt, atan2, cos, inf, pi, sin, isclose
 from functools import reduce
 from time import time
 import pygame
@@ -11,18 +11,18 @@ import numpy as np
 import pygame_widgets
 from pygame_widgets.slider import Slider
 
-num_particles = 50
-num_steps = 10000
+num_particles = 30
+num_steps = 5000
 scale = 1e+9
-x_lim = 3e-9 
-y_lim = 3e-9
+x_lim = 2e-9 
+y_lim = 2e-9
 x_lim = x_lim*scale
 y_lim = y_lim*scale
 WINDOW_WIDTH = 600
 WINDOW_HEIGHT = 600
 CONTROL_SPACE = 100
 SPACING_TEXT = 15
-DT = 0.001
+DT = 0.0001
 radius = 5.29177210903e-11
 scale_factor = 10
 
@@ -56,7 +56,15 @@ def init_graphics(particles):
 def draw_line(window, coord_1, coord_2):
     pygame.draw.line(window, BLACK, coord_1, coord_2)
             
-
+def draw_particle(window, rad, x, y, color):
+            """
+            Create a graphical representation of this particle for visualization.
+            win is the graphics windown in which the particle should be drawn.
+            
+            rad is the radius of the particle"""
+            x_coord = int(x/x_lim * WINDOW_WIDTH)
+            y_coord = int(y/y_lim * WINDOW_HEIGHT)
+            draw_circle(window, x_coord, y_coord, Particle.int_radius, color)
 ###########################
 # Particle Representation #
 ###########################
@@ -81,7 +89,6 @@ class Particle(object):
     radius = radius*scale
 
     int_radius = int(ceil(radius/x_lim* WINDOW_HEIGHT))
-    print(int_radius)
 
     dt = DT
 
@@ -105,23 +112,14 @@ class Particle(object):
         self.oldy = y
         self.constant_particle = False
 
-    def draw(self, window, rad):
+    def draw(self, window, rad, x, y):
             """
             Create a graphical representation of this particle for visualization.
             win is the graphics windown in which the particle should be drawn.
             
             rad is the radius of the particle"""
-            x_coord = int(self.x/x_lim * WINDOW_WIDTH)
-            y_coord = int(self.y/y_lim * WINDOW_HEIGHT)
-            # print("x_coord " + str(x_coord))
-            # print("y_coord"+str(y_coord))
-            # self.print()
-            # if abs(x_coord) > WINDOW_WIDTH or abs(y_coord) > WINDOW_HEIGHT or x_coord < 0 or y_coord < 0:
-            #     x_coord = x_lim/2 * WINDOW_WIDTH
-            #     y_coord = y_lim/2 * WINDOW_WIDTH
-            #     return
-            # if (x_coord < 0) or (y_coord < 0) or (x_coord > WINDOW_WIDTH) or (y_coord > WINDOW_HEIGHT):
-            #     return
+            x_coord = int(x/x_lim * WINDOW_WIDTH)
+            y_coord = int(y/y_lim * WINDOW_HEIGHT)
             color = BLUE
             if self.constant_particle:
                 color = RED
@@ -132,18 +130,23 @@ class Particle(object):
         Therefore we must update the vx/vy components using the new acceleration, and then move
         This still has some issues, such as a particle might not move enough to get outside the 
         radius of another particle
+        https://www.ccp5.ac.uk/sites/www.ccp5.ac.uk/files/Democritus/Theory/verlet.html#velver
         """
         if not self.constant_particle:
-            self.x = self.x + self.vx * self.dt + 0.5*self.ax*self.dt**2
-            self.y = self.y + self.vy * self.dt + 0.5*self.ay*self.dt**2
-            self.vx = self.vx + (self.ax + self.new_ax)/2 * self.dt
-            self.vy = self.vy + (self.ay + self.new_ay)/2 * self.dt
+            vx_half = self.vx + (self.ax*self.dt)/2
+            vy_half = self.vy + (self.ay*self.dt)/2
+
+            self.x = self.x + vx_half * self.dt
+            self.y = self.y + vy_half * self.dt 
+
+            self.vx = vx_half + (self.dt*self.new_ax)/2
+            self.vy = vy_half + (self.dt*self.new_ay)/2
             self.ax = self.new_ax
             self.ay = self.new_ay
-            self.oldx = self.x
-            self.oldy = self.y
+
     
     def print(self):
+        print("id: " + str(self.id))
         print("x: " + str(self.x))
         print("y: " + str(self.y))
         print("vx: " + str(self.vx))
@@ -204,7 +207,6 @@ class Particle(object):
         #horizontal wall
         elif horizontal_count > 0:
             self.new_ay = -2*self.vy/Particle.dt
-        
         return
 
     def compute_lj_forces(self, other_p):
@@ -219,20 +221,23 @@ class Particle(object):
         r2 = sqrt(rx*rx+ry*ry)
 
         lj_f = lj_force(r2)
-        print("ljforce: " + str(lj_f))
         energy_before = self.energy + other_p.energy
-
+        if isclose(lj_f, 0):
+            return
+        # print((lj_f*(rx/r2))/self.mass)
+        # print(self.vx)
         self.new_ax += (lj_f*(rx/r2))/self.mass
         self.new_ay += (lj_f*(ry/r2))/self.mass
         other_p.new_ax -= (lj_f*(rx/r2))/self.mass
         other_p.new_ay -= (lj_f*(ry/r2))/self.mass
         energy_after = self.energy_plus_dt + other_p.energy_plus_dt
-        ratio = energy_before/energy_after
-        if 1 - ratio > 0.1:
-            self.new_ax *= ratio
-            self.new_ay *= ratio 
-            other_p.new_ax *= ratio
-            other_p.new_ax *= ratio
+        ratio = energy_after/energy_before
+        # if self.id == 11:
+        #     print("LJ_F: " +str(lj_f))
+        #     print("R: " +str(r2))
+        #     self.print()
+        #     other_p.print()
+            # print(ratio)
         return
     
     def change_temp(self, change):
@@ -282,20 +287,21 @@ def two_particles_bounce(p1, p2):
     else:
         return False
 
-def lj_force(r, epsilon=0.09, sigma=2.45):
+def lj_force(r, epsilon=50, sigma=-1.8):
     """
     Implementation of the Lennard-Jones potential 
     to calculate the force of the interaction.
 
     The force scalar is the derivative wrt to R 
     f = -partial(LJ_potential)/partial*r
+    https://www.wolframalpha.com/input/?i=d%2Fdr%284d*%28%28%28s%2Fr%29%5E12%29-%28s%2Fr%29%5E6%29%29
     """
-    r = 1/Particle.radius * r
-    
-    if r < 2.1:
-        print(r)
-        r = 1.99
-    return 48 * epsilon * (pow(sigma,12)/pow(r,13)-24*epsilon*pow(sigma,6)/pow(r,7))
+    r = r/Particle.radius 
+    if r > 5:
+        return 0
+    if r < 2:
+        r = 1.85
+    return -(24 * epsilon * pow(sigma,6) * (pow(r,6) - 2*pow(sigma,6)))/pow(r,13)
 
 
 ##################
@@ -351,10 +357,10 @@ def make_particles(n, temp_scale, nucleation):
 #####################
 # Serial Simulation #
 #####################
-def serial_simulation(n, steps, update_interval=1, label_particles=False, normalize_energy=True, nucleation=False):
+def serial_simulation(n, steps, update_interval=1, label_particles=False, normalize_energy=True, nucleation=False, speed_up=5):
 
     # Create particles
-    temp_scale = 0.3
+    temp_scale = 1
     particles = make_particles(num_particles, temp_scale, nucleation)
     initial_energy = reduce(lambda x, p: x + p.energy, particles, 0)
 
@@ -370,8 +376,41 @@ def serial_simulation(n, steps, update_interval=1, label_particles=False, normal
     start = time()
     running = True
     energy_display = initial_energy
+    paths = np.zeros((steps, num_particles, 2))
+    colours = np.zeros(num_particles)
+    for step in range(1,steps):
+        if step % 100 == 0:
+            print("step {} out of {}".format(step, steps))
+        #compute forces
+        for i, p in enumerate(particles):
+            colours[p.id] = 0 if not p.constant_particle else 1
+            paths[step][p.id][0] = p.x
+            paths[step][p.id][1] = p.y
+            p.new_ax = 0
+            p.new_ay = 0
+            p.compute_wall_forces() 
 
-    while running:
+            #compute collision interactions
+            for p2 in particles[i+1:]:
+                p.compute_lj_forces(p2)
+                
+        energy = 0        
+        change_energy = 0
+        # Move particles
+        for p in particles:
+            p.move()
+            # energy normalisation
+            p.vx *= Particle.energy_correction
+            p.vy *= Particle.energy_correction
+            energy += p.energy
+            p.collision = False
+        # initial_energy += change_energy
+        # if normalize_energy:
+        #     Particle.energy_correction = sqrt((initial_energy) / energy)
+    
+    print(paths[0])
+    counter = 0
+    while counter < steps:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -381,52 +420,8 @@ def serial_simulation(n, steps, update_interval=1, label_particles=False, normal
                     pause()
                 elif event.key == pygame.K_ESCAPE:
                     running = False
-        
         window.fill(WHITE)
         draw_line(window, (0,WINDOW_HEIGHT), (WINDOW_WIDTH, WINDOW_HEIGHT))
-        slider_val = round(slider.getValue(),3)
-        label = myfont.render("Temperature: " + str(round(energy_display*100,3)), 2, BLACK )
-        window.blit(label, (1, WINDOW_HEIGHT + 1))
-        pygame_widgets.update(event)
-        for p in particles:
-            p.draw(window, Particle.radius)
-            if label_particles:
-                label = myfont.render(str(p.id), 2, BLACK )
-                window.blit(label, (p.x/x_lim*WINDOW_WIDTH, p.y/y_lim*WINDOW_HEIGHT))
-
-        #compute forces
-        for i, p in enumerate(particles):
-            p.new_ax = 0
-            p.new_ay = 0
-            p.compute_wall_forces() 
-
-            #compute collision interactions
-            for p2 in particles[i+1:]:
-                p.compute_lj_forces(p2)
-                
-        energy = 0
-        change_temp_scale = (slider_val - temp_scale)
-        
-        change_energy = 0
-        # Move particles
-        for p in particles:
-            p.move()
-            # energy normalisation
-            p.vx *= Particle.energy_correction
-            p.vy *= Particle.energy_correction
-            energy += p.energy
-            # change temp scale
-            if change_temp_scale != 0:
-                change_energy += p.change_temp(change_temp_scale)
-            
-            p.collision = False
-        initial_energy += change_energy
-        # need to change initial energy
-        temp_scale = slider_val
-        # Energy normalization
-        if normalize_energy:
-            Particle.energy_correction = sqrt((initial_energy) / energy)
-        energy_display = energy*Particle.energy_correction
         bottom_left_corner = myfont.render("0,0", 1, BLUE)
         window.blit(bottom_left_corner, (0, 0))
         top_left_corner = myfont.render("0,1", 1, BLUE)
@@ -434,9 +429,20 @@ def serial_simulation(n, steps, update_interval=1, label_particles=False, normal
         bottom_right_corner = myfont.render("1,0", 1, BLUE)
         window.blit(bottom_right_corner, (WINDOW_WIDTH-15, 0))    
         top_right_corner = myfont.render("1,1", 1, BLUE)
-        window.blit(top_right_corner, (WINDOW_WIDTH-15, WINDOW_HEIGHT-15))   
+        window.blit(top_right_corner, (WINDOW_WIDTH-15, WINDOW_HEIGHT-15))
+        timestep = paths[counter]
+        for i, p in enumerate(timestep):
+            x = p[0]
+            y = p[1]
+            color = BLUE if not colours[i] else RED
+            draw_particle(window, Particle.radius, x, y, color)
+            if label_particles:
+                label = myfont.render(str(i), 2, BLACK )
+                window.blit(label, (x/x_lim*WINDOW_WIDTH, y/y_lim*WINDOW_HEIGHT))
+               
 
         pygame.display.update()
+        counter += 5
 
 
     end = time()
@@ -464,7 +470,7 @@ def pause():
 def run():
     max_particle_speed = Particle.dt * Particle.radius
     print("max_particle_speed" + str(max_particle_speed))
-    serial_simulation(num_particles, num_steps, 1, True, nucleation=True)
+    serial_simulation(num_particles, num_steps, 1, True, nucleation=True, speed_up=5)
     
 
 # d= distance_point_to_wall((0,0),(10,0),10,10)
