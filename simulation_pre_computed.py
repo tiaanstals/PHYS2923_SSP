@@ -37,22 +37,29 @@ def lj_force_cutoff(r, SIGMA, EPSILON, SIGMA_6):
 
 
 class Simulation(object):
-    num_particles = 20
-    num_steps = 10000
-    velocity_scaler = 0.2
-    lim = 15
+    num_particles = 35
+    num_steps = 20*10000
+    velocity_scaler = 0.1
+    lim = 50
     x_lim, y_lim = lim, lim
     WINDOW_WIDTH = 600
     WINDOW_HEIGHT = 600
     CONTROL_SPACE = 100
     SPACING_TEXT = 15
-    DT = 0.0001
-    EPSILON=1
+    DT = 0.0005
+    EPSILON=3
     SIGMA=1
     CUTOFF = 2.5*SIGMA
     SIGMA_6 = SIGMA*SIGMA*SIGMA*SIGMA*SIGMA*SIGMA
     LJ_FORCE_SHIFT=-lj_force_cutoff(CUTOFF, SIGMA, EPSILON, SIGMA_6)
 
+class Box(object):
+    def __init__(self, box_x, box_y):
+        self.box_x = box_x
+        self.box_y = box_y
+    
+    def set_x(self,new_box_x):
+        self.box_x = new_box_x
 
 ###########################
 # Graphics #
@@ -148,7 +155,7 @@ class Particle(object):
     
     def set_new_acc(self, new_ax, new_ay):
         self.ax += new_ax
-        self.ax += new_ax
+        self.ay += new_ay
 
     def move(self):
         """ if a particle collides, it cannot continue with the last vx/vy components
@@ -181,12 +188,12 @@ class Particle(object):
         print("new_ax: " + str(self.new_ax))
         print("new_ay: " + str(self.new_ay))
     
-    def compute_wall_forces(self):
+    def compute_wall_forces(self, box):
         energy_before = self.energy
         BOTTOM_LEFT = (0, 0)
-        BOTTOM_RIGHT = (Simulation.x_lim, 0)
-        TOP_LEFT = (0, Simulation.y_lim)
-        TOP_RIGHT = (Simulation.x_lim, Simulation.y_lim)
+        BOTTOM_RIGHT = (box.box_x, 0)
+        TOP_LEFT = (0, box.box_y)
+        TOP_RIGHT = (box.box_x,box.box_y)
         
         horizontal_count = 0
         vertical_count = 0
@@ -236,9 +243,9 @@ class Particle(object):
         if isclose(energy_before,0):
             return
         ratio = energy_after/energy_before
-        if vertical_count + horizontal_count > 0:
-            print(ratio)
-            self.print()
+        # if vertical_count + horizontal_count > 0:
+        #     print(ratio)
+        #     self.print()
         return
 
     def compute_lj_forces(self, other_p):
@@ -257,12 +264,12 @@ class Particle(object):
         if isclose(lj_f, 0):
             return
         # old_ax = self.new_ax
-
+        energy_before = self.energy + other_p.energy
         # if lj_f is positive, acceleration should be in the direction of the vector which points from p2 to p1 (repulsive)
         # if lj_f is negative, acceleration should be in the direction of the vector which points from p1 to p2 (attractive)
-        self.set_new_acc(lj_f*rx,lj_f*ry)
+        self.set_new_acc(lj_f*rx/r2,lj_f*ry/r2)
         # by newtons third law
-        other_p.set_new_acc(-lj_f*rx,-lj_f*ry)
+        other_p.set_new_acc(-lj_f*rx/r2,-lj_f*ry/r2)
         return
     
     def change_temp(self, change):
@@ -335,8 +342,8 @@ def lj_force(r):
     lf = const*(repulsive + attractive) + Simulation.LJ_FORCE_SHIFT
     return lf
 
-def generate_square_matrix(n, x_mid, y_mid):
-    cube_2 = cube_root(2)
+def generate_square_matrix(n, x_mid, y_mid,nucleation):
+    cube_2 = 1.2*cube_root(2)
     first_x = x_mid - cube_2*n*Particle.radius
     first_y = y_mid - cube_2*n*Particle.radius
     x = []
@@ -345,7 +352,7 @@ def generate_square_matrix(n, x_mid, y_mid):
         for j in range(2*n+1):
             x_coord = first_x + i*cube_2*Particle.radius 
             y_coord = first_y + j*cube_2*Particle.radius
-            if isclose(x_mid, x_coord) and isclose(y_mid,y_coord):
+            if isclose(x_mid, x_coord) and isclose(y_mid,y_coord) and nucleation:
                 continue
             x.append(x_coord)
             y.append(y_coord)
@@ -373,6 +380,12 @@ def make_particles(n, temp_scale, nucleation, locations):
         for i, p in enumerate(particles):
             p.x = Simulation.x_lim/2 + locations[0][i]
             p.y = Simulation.y_lim/2 + locations[1][i]
+            p.xy = 0
+            p.vy = 0
+            p.ax = 0
+            p.ay = 0
+            vx_list.append(p.vx)
+            vy_list.append(p.vy)
     else:
         for p in particles:
             # Distribute particles randomly in our box
@@ -395,18 +408,17 @@ def make_particles(n, temp_scale, nucleation, locations):
         p.vy -= mean_vy
     if nucleation:
         new_particle = Particle(Simulation.x_lim/2, Simulation.y_lim/2,0,0,0,0,next_p)
-        new_particle.constant_particle = True
+        new_particle.constant_particle = False
         particles.append(new_particle)
     # make sure no particles are overlapping
-    spacing = 1
-    if not locations:
-        spacing = 0
     overlap = True
+    if locations:
+        overlap = False
     while overlap:
         collision_detected = False
         for i, p in enumerate(particles):
             for p2 in particles[i+1:]:
-                if round(sqrt((p.x-p2.x)**2 + (p.y-p2.y)**2),2) < (2*Particle.radius + spacing):
+                if round(sqrt((p.x-p2.x)**2 + (p.y-p2.y)**2),2) < (1.5*Particle.radius):
                     # print("Particle 1: [" + str(p.x) + "," + str(p.y) + "]")
                     # print("Particle 2: [" + str(p2.x) + "," + str(p2.y) + "]")
                     # print("(px - p2x)**2 = " + str((p.x-p2.x)**2))
@@ -428,7 +440,7 @@ def make_particles(n, temp_scale, nucleation, locations):
 #####################
 # Serial Simulation #
 #####################
-def serial_simulation(update_interval=1, label_particles=False, normalize_energy=True, nucleation=False, speed_up=5):
+def serial_simulation(update_interval=1, label_particles=False, normalize_energy=True, nucleation=False, speed_up=5, squeeze_box=False):
 
     # Create particles
     cube_2 = cube_root(2)
@@ -438,12 +450,12 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
     # thus all distances should be cuberoot(3)*value
     # https://www.wolframalpha.com/input/?i=roots+24*%282%281%2Fx%29%5E13-0.5*%281%2Fx%29%5E7%29
     # 
-    # x = [Particle.radius/2, Particle.radius, Particle.radius/2, -Particle.radius/2, -Particle.radius,-Particle.radius/2]
-    # y = [sqrt(3)*Particle.radius/2, 0, -sqrt(3)*Particle.radius/2,-sqrt(3)*Particle.radius/2, 0, sqrt(3)*Particle.radius/2]
-    # x = np.multiply(x,cube_2)
-    # y = np.multiply(y,cube_2)
-    # locations = [x, y]
-    # Simulation.num_particles = len(x)
+    x = [Particle.radius/2, Particle.radius, Particle.radius/2, -Particle.radius/2, -Particle.radius,-Particle.radius/2]
+    y = [sqrt(3)*Particle.radius/2, 0, -sqrt(3)*Particle.radius/2,-sqrt(3)*Particle.radius/2, 0, sqrt(3)*Particle.radius/2]
+    x = np.multiply(x,cube_2)
+    y = np.multiply(y,cube_2)
+    locations = [x, y]
+    Simulation.num_particles = len(x)
 
     # square
     # x = [Particle.radius, -Particle.radius, 0,0, Particle.radius, -Particle.radius]
@@ -454,9 +466,9 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
     # locations = [x, y]
     # Simulation.num_particles = len(x)
 
-    # locations = generate_square_matrix(3,0,0)
+    # locations = generate_square_matrix(3,0,0, nucleation)
     # Simulation.num_particles = len(locations[0])
-    locations = None
+    # locations = None
     particles = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations)
     initial_energy = reduce(lambda x, p: x + p.energy, particles, 0)
 
@@ -471,14 +483,36 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
     start = time()
     running = True
     energy_display = initial_energy
-    paths = np.zeros((Simulation.num_steps, len(particles), 2))
+    paths = np.zeros((Simulation.num_steps, len(particles), 4))
     colours = np.zeros(len(particles))
+    # squeez box
+    # by 50% of the simulation, the box should be x times its original size (x<1)
+    # every how many steps should the box decrease by 1 unit?
+    # number of steps to accomplish squeeze = Simulation.num_steps/2
+    squeeze_size = 0.5
+    # amount of change in box limits:
+    # final box_x = x*Simulation.x_lim
+    final_box_x = squeeze_size*Simulation.x_lim
+    # number of increments required:
+    # final x_lim - final_box_x
+    change_amount = Simulation.x_lim - final_box_x
+    print("change amount "+ str(change_amount))
+    # every step how much should the box decrease
+    step_change_squeeze = change_amount/Simulation.num_steps
+    print("step_change_squeeze "+ str(step_change_squeeze))
+
+    box = Box(Simulation.x_lim, Simulation.y_lim)
+    box_size = np.zeros((Simulation.num_steps, 1))
     for step in tqdm(range(1,Simulation.num_steps)):
         #compute forces
+        if squeeze_box:
+            box.set_x(box.box_x - step_change_squeeze)
+            box_size[step] = box.box_x
         for i, p in enumerate(particles):
             colours[p.id] = 0 if not p.constant_particle else 1
             paths[step][p.id][0] = p.x
             paths[step][p.id][1] = p.y
+            paths[step][p.id][2] = p.energy
             p.new_ax = 0
             p.new_ay = 0
 
@@ -488,15 +522,16 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
                 if p2.id == p.id:
                     continue
                 p.compute_lj_forces(p2)
-            p.compute_wall_forces() 
-                
+            p.compute_wall_forces(box) 
+        
         # Move particles
         for p in particles:
             p.move()
     
-    slider = Slider(window, 0, Simulation.WINDOW_HEIGHT + 2*Simulation.SPACING_TEXT, Simulation.WINDOW_WIDTH, 10, min=1, max=100, step=.05, initial=speed_up)
+    slider = Slider(window, 0, Simulation.WINDOW_HEIGHT + 2*Simulation.SPACING_TEXT, Simulation.WINDOW_WIDTH, 10, min=1, max=1000, step=.05, initial=speed_up)
     counter = 0
     speed_up = speed_up
+    
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -511,12 +546,9 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
         draw_line(window, (0,Simulation.WINDOW_HEIGHT), (Simulation.WINDOW_WIDTH, Simulation.WINDOW_HEIGHT))
         
         
-        input_speed = int(slider.getValue())
+        input_speed = slider.getValue()
         speed_up = input_speed
         label_speed = myfont.render("Speed: " + str(speed_up), 2, BLACK )
-        
-
-
         window.blit(label_speed, (1, Simulation.WINDOW_HEIGHT + Simulation.SPACING_TEXT))
         bottom_left_corner = myfont.render("0,0", 1, BLUE)
         window.blit(bottom_left_corner, (0, 0))
@@ -527,21 +559,30 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
         top_right_corner = myfont.render("1,1", 1, BLUE)
         window.blit(top_right_corner, (Simulation.WINDOW_WIDTH-15, Simulation.WINDOW_HEIGHT-15))
         timestep = paths[counter]
+        energy_step = np.zeros(len(timestep))
+
         for i, p in enumerate(timestep):
             x = p[0]
             y = p[1]
+            energy_step[i] = p[2]
             # print("[" + str(x) + "," + str(y) + "]")
             color = BLUE if not colours[i] else RED
             draw_particle(window, Particle.radius, x, y, color, LIGHT_BLUE)
             if label_particles:
                 label = myfont.render(str(i), 2, BLACK )
                 window.blit(label, (to_display_scale(x), to_display_scale(y)))
-        
+        mean_e = sum(energy_step)/len(energy_step)
         label = myfont.render("Progress {:2.2%}".format(counter/Simulation.num_steps), 2, BLACK )
         window.blit(label, (1, Simulation.WINDOW_HEIGHT + 1))
+        if squeeze_box:
+            draw_line(window, (to_display_scale(box_size[counter]),Simulation.WINDOW_HEIGHT), (to_display_scale(box_size[counter]), 0))
+
+        label_e = myfont.render("Energy {:2}".format(mean_e), 2, BLACK )
+        window.blit(label_e, (1, Simulation.WINDOW_HEIGHT + 3*Simulation.SPACING_TEXT))
         pygame_widgets.update(event)
         pygame.display.update()
-        counter += speed_up
+        clock.tick(30)
+        counter += int(speed_up)
         if counter >= Simulation.num_steps:
             counter = 0
 
@@ -568,7 +609,7 @@ def pause():
 # MAIN #
 ##########################
 
-def run():
+def main():
     pygame.init()
     print("x_lim {}".format(Simulation.x_lim))
     print("y_lim {}".format(Simulation.y_lim))
@@ -580,4 +621,7 @@ def run():
 
 # d= distance_point_to_wall((0,0),(10,0),10,10)
 # print(d)
-run()
+# global
+
+if __name__ == '__main__':
+    main()
