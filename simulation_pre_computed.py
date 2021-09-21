@@ -12,6 +12,7 @@ import pygame_widgets
 from pygame_widgets.slider import Slider
 from tqdm import tqdm
 
+
 def lj_force_cutoff(r, SIGMA, EPSILON, SIGMA_6):
     """
     Lenard Jones function to calculate force at cutoff so we can have a vertical shift
@@ -38,15 +39,15 @@ def lj_force_cutoff(r, SIGMA, EPSILON, SIGMA_6):
 
 class Simulation(object):
     num_particles = 35
-    num_steps = 20*10000
-    velocity_scaler = 0.1
-    lim = 50
+    num_steps = 10000
+    velocity_scaler = 1
+    lim = 30
     x_lim, y_lim = lim, lim
     WINDOW_WIDTH = 600
     WINDOW_HEIGHT = 600
     CONTROL_SPACE = 100
     SPACING_TEXT = 15
-    DT = 0.0005
+    DT = 0.001
     EPSILON=3
     SIGMA=1
     CUTOFF = 2.5*SIGMA
@@ -152,6 +153,7 @@ class Particle(object):
         self.oldx = x
         self.oldy = y
         self.constant_particle = False
+        self.potential_energy = 0
     
     def set_new_acc(self, new_ax, new_ay):
         self.ax += new_ax
@@ -342,8 +344,9 @@ def lj_force(r):
     lf = const*(repulsive + attractive) + Simulation.LJ_FORCE_SHIFT
     return lf
 
+
 def generate_square_matrix(n, x_mid, y_mid,nucleation):
-    cube_2 = 1.2*cube_root(2)
+    cube_2 = cube_root(2)
     first_x = x_mid - cube_2*n*Particle.radius
     first_y = y_mid - cube_2*n*Particle.radius
     x = []
@@ -362,10 +365,24 @@ def cube_root(x):
     if 0<=x: return x**(1./3.)
     return -(-x)**(1./3.)
 
+
+def rotate_square_matrix(mat,deg):
+    x_coords = mat[0]
+    y_coords = mat[1]
+    x_coords_rotated = []
+    y_coords_rotated = []
+    for i, x in enumerate(x_coords):
+        y = y_coords[i]
+        new_x = x*np.cos(deg) - y*np.sin(deg)
+        new_y = x*np.sin(deg) + y*np.cos(deg)
+        x_coords_rotated.append(new_x)
+        y_coords_rotated.append(new_y)
+    return [x_coords_rotated, y_coords_rotated]
+
 ##################
 # Initialization #
 ##################
-def make_particles(n, temp_scale, nucleation, locations):
+def make_particles(n, temp_scale, nucleation, locations, fast_particle=False):
     """Construct a list of n particles in two dimensions, initially distributed
     evenly but with random velocities. The resulting list is not spatially
     sorted."""
@@ -376,7 +393,7 @@ def make_particles(n, temp_scale, nucleation, locations):
     shuffle(particles)
     vx_list = []
     vy_list = []
-    if locations:
+    if locations is not None:
         for i, p in enumerate(particles):
             p.x = Simulation.x_lim/2 + locations[0][i]
             p.y = Simulation.y_lim/2 + locations[1][i]
@@ -399,7 +416,7 @@ def make_particles(n, temp_scale, nucleation, locations):
             vy_list.append(p.vy)
             p.ax = 0
             p.ay = 0
-
+    
     # let total linear momentum be initially 0
     mean_vx = sum(vx_list)/len(vx_list)
     mean_vy = sum(vy_list)/len(vy_list)
@@ -410,9 +427,25 @@ def make_particles(n, temp_scale, nucleation, locations):
         new_particle = Particle(Simulation.x_lim/2, Simulation.y_lim/2,0,0,0,0,next_p)
         new_particle.constant_particle = False
         particles.append(new_particle)
+        next_p += 1
+    if fast_particle:
+        speed = 30
+        acc = 20
+        new_particle = Particle(2*Particle.radius,Simulation.y_lim/2,speed,0,acc,0,next_p)
+        particles.append(new_particle)
+        new_particle_2 = Particle(2*Particle.radius,Simulation.y_lim/2 + Particle.radius,speed,0,acc,0,next_p+1)
+        particles.append(new_particle_2)
+        new_particle_3 = Particle(2*Particle.radius,Simulation.y_lim/2 - Particle.radius,speed,0,acc,0,next_p+2)
+        particles.append(new_particle_3)
+        new_particle_4 = Particle(Simulation.x_lim - 2*Particle.radius,Simulation.y_lim/2,-speed,0,-acc,0,next_p+3)
+        particles.append(new_particle_4)
+        new_particle_5 = Particle(Simulation.x_lim - 2*Particle.radius,Simulation.y_lim/2 + Particle.radius,-speed,0,-acc,0,next_p+4)
+        particles.append(new_particle_5)
+        new_particle_6 = Particle(Simulation.x_lim - 2*Particle.radius,Simulation.y_lim/2 - Particle.radius,-speed,0,-acc,0,next_p+5)
+        particles.append(new_particle_6)
     # make sure no particles are overlapping
     overlap = True
-    if locations:
+    if locations is not None:
         overlap = False
     while overlap:
         collision_detected = False
@@ -450,11 +483,21 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
     # thus all distances should be cuberoot(3)*value
     # https://www.wolframalpha.com/input/?i=roots+24*%282%281%2Fx%29%5E13-0.5*%281%2Fx%29%5E7%29
     # 
-    x = [Particle.radius/2, Particle.radius, Particle.radius/2, -Particle.radius/2, -Particle.radius,-Particle.radius/2]
-    y = [sqrt(3)*Particle.radius/2, 0, -sqrt(3)*Particle.radius/2,-sqrt(3)*Particle.radius/2, 0, sqrt(3)*Particle.radius/2]
-    x = np.multiply(x,cube_2)
-    y = np.multiply(y,cube_2)
-    locations = [x, y]
+    # x = [Particle.radius/2, Particle.radius, Particle.radius/2, -Particle.radius/2, -Particle.radius,-Particle.radius/2]
+    # y = [sqrt(3)*Particle.radius/2, 0, -sqrt(3)*Particle.radius/2,-sqrt(3)*Particle.radius/2, 0, sqrt(3)*Particle.radius/2]
+    # x = np.multiply(x,cube_2)
+    # y = np.multiply(y,cube_2)
+    # locations = [x, y]
+    # Simulation.num_particles = len(x)
+
+    # conway hexagon
+    r_1 = cube_2
+    r_2 = cube_2*2
+    x = [r_1 * cos(0), r_1 * cos(pi/3), r_1 * cos(2*pi/3), r_1 * cos(pi), r_1 * cos(4*pi/3), r_1 * cos(5*pi/3)]
+    y = [r_1 * sin(0), r_1 * sin(pi/3), r_1 * sin(2*pi/3), r_1 * sin(pi), r_1 * sin(4*pi/3), r_1 * sin(5*pi/3)]
+    x_2 = [r_2 * cos(pi/2), r_2 * cos(5*pi/6), r_2 * cos(7*pi/6), r_2 * cos(9*pi/6), r_2 * cos(11*pi/6), r_2 * cos(13*pi/6)]
+    y_2 = [r_2 * sin(pi/2), r_2 * sin(5*pi/6), r_2 * sin(7*pi/6), r_2 * sin(9*pi/6), r_2 * sin(11*pi/6), r_2 * sin(13*pi/6)]
+    locations = [x+x_2, y+y_2]
     Simulation.num_particles = len(x)
 
     # square
@@ -466,12 +509,11 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
     # locations = [x, y]
     # Simulation.num_particles = len(x)
 
-    # locations = generate_square_matrix(3,0,0, nucleation)
-    # Simulation.num_particles = len(locations[0])
+    # locations = generate_square_matrix(2,0,0, nucleation)
+    # locations = rotate_square_matrix(locations, 0)
+    Simulation.num_particles = len(locations[0])
     # locations = None
-    particles = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations)
-    initial_energy = reduce(lambda x, p: x + p.energy, particles, 0)
-
+    particles = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations, fast_particle=True)
     # Initialize visualization
     window = init_graphics(particles)
     
@@ -482,8 +524,7 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
     # Perform simulation
     start = time()
     running = True
-    energy_display = initial_energy
-    paths = np.zeros((Simulation.num_steps, len(particles), 4))
+    paths = np.zeros((Simulation.num_steps, len(particles), 5))
     colours = np.zeros(len(particles))
     # squeez box
     # by 50% of the simulation, the box should be x times its original size (x<1)
@@ -512,6 +553,7 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
             colours[p.id] = 0 if not p.constant_particle else 1
             paths[step][p.id][0] = p.x
             paths[step][p.id][1] = p.y
+            # kinetic energy
             paths[step][p.id][2] = p.energy
             p.new_ax = 0
             p.new_ay = 0
@@ -527,7 +569,7 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
         # Move particles
         for p in particles:
             p.move()
-    
+    np.save('./for_analysis/35_30.npy', paths)
     slider = Slider(window, 0, Simulation.WINDOW_HEIGHT + 2*Simulation.SPACING_TEXT, Simulation.WINDOW_WIDTH, 10, min=1, max=1000, step=.05, initial=speed_up)
     counter = 0
     speed_up = speed_up
