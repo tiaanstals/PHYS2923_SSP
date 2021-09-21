@@ -11,6 +11,7 @@ import numpy as np
 import pygame_widgets
 from pygame_widgets.slider import Slider
 from tqdm import tqdm
+import pickle
 
 def lj_force_cutoff(r, SIGMA, EPSILON, SIGMA_6):
     """
@@ -38,9 +39,9 @@ def lj_force_cutoff(r, SIGMA, EPSILON, SIGMA_6):
 
 class Simulation(object):
     num_particles = 35
-    num_steps = 20*10000
+    num_steps = 5000
     velocity_scaler = 0.1
-    lim = 50
+    lim = 30
     x_lim, y_lim = lim, lim
     WINDOW_WIDTH = 600
     WINDOW_HEIGHT = 600
@@ -52,6 +53,24 @@ class Simulation(object):
     CUTOFF = 2.5*SIGMA
     SIGMA_6 = SIGMA*SIGMA*SIGMA*SIGMA*SIGMA*SIGMA
     LJ_FORCE_SHIFT=-lj_force_cutoff(CUTOFF, SIGMA, EPSILON, SIGMA_6)
+
+    def __init__(self, loaded_params):
+        self.num_particles = loaded_params.num_particles
+        self.num_steps = loaded_params.num_steps
+        self.velocity_scaler = loaded_params.velocity_scaler
+        self.lim = loaded_params.lim 
+        self.x_lim = loaded_params.x_lim
+        self.y_lim = loaded_params.y_lim
+        self.WINDOW_WIDTH = loaded_params.WINDOW_WIDTH
+        self.WINDOW_HEIGHT = loaded_params.WINDOW_HEIGHT
+        self.CONTROL_SPACE = loaded_params.CONTROL_SPACE
+        self.SPACING_TEXT = loaded_params.SPACING_TEXT
+        self.DT = loaded_params.DT
+        self.EPSILON = loaded_params.EPSILON
+        self.SIGMA = loaded_params.SIGMA
+        self.SIGMA_6 = loaded_params.SIGMA_6
+        self.LJ_FORCE_SHIFT = loaded_params.LJ_FORCE_SHIFT
+        
 
 class Box(object):
     def __init__(self, box_x, box_y):
@@ -77,14 +96,13 @@ def draw_circle(window, x, y, radius, color_inner, color_outer):
     pygame.draw.ellipse(window, color_inner, (x-radius/2, y-radius/2, radius,radius))
     
 
-def init_graphics(particles):
+def init_graphics():
     background_colour = WHITE
     pygame.font.init() # you have to call this at the start, 
                    # if you want to use this module.
     
     window = pygame.display.set_mode((Simulation.WINDOW_WIDTH, Simulation.WINDOW_HEIGHT + Simulation.CONTROL_SPACE))
     pygame.display.set_caption('Particle Simulation')
-    
     window.fill(background_colour)
     return window
 
@@ -440,94 +458,103 @@ def make_particles(n, temp_scale, nucleation, locations):
 #####################
 # Serial Simulation #
 #####################
-def serial_simulation(update_interval=1, label_particles=False, normalize_energy=True, nucleation=False, speed_up=5, squeeze_box=False):
+def serial_simulation(update_interval=1, label_particles=False, normalize_energy=True, nucleation=False, speed_up=5, squeeze_box=False, load_data=False,
+                        sim_name='latest'):
 
     # Create particles
-    cube_2 = cube_root(2)
-    #hexagon
-    # equilibrium distance is cuberoot(2)
-    # https://www.wolframalpha.com/input/?i=roots+24*%282%281%2Fx%29%5E13-0.5*%281%2Fx%29%5E7%29
-    # thus all distances should be cuberoot(3)*value
-    # https://www.wolframalpha.com/input/?i=roots+24*%282%281%2Fx%29%5E13-0.5*%281%2Fx%29%5E7%29
-    # 
-    x = [Particle.radius/2, Particle.radius, Particle.radius/2, -Particle.radius/2, -Particle.radius,-Particle.radius/2]
-    y = [sqrt(3)*Particle.radius/2, 0, -sqrt(3)*Particle.radius/2,-sqrt(3)*Particle.radius/2, 0, sqrt(3)*Particle.radius/2]
-    x = np.multiply(x,cube_2)
-    y = np.multiply(y,cube_2)
-    locations = [x, y]
-    Simulation.num_particles = len(x)
+    Simulation = Simulation()
+    if not load_data:
+        cube_2 = cube_root(2)
+        #hexagon
+        # equilibrium distance is cuberoot(2)
+        # https://www.wolframalpha.com/input/?i=roots+24*%282%281%2Fx%29%5E13-0.5*%281%2Fx%29%5E7%29
+        # thus all distances should be cuberoot(3)*value
+        # https://www.wolframalpha.com/input/?i=roots+24*%282%281%2Fx%29%5E13-0.5*%281%2Fx%29%5E7%29
+        # 
+        # x = [Particle.radius/2, Particle.radius, Particle.radius/2, -Particle.radius/2, -Particle.radius,-Particle.radius/2]
+        # y = [sqrt(3)*Particle.radius/2, 0, -sqrt(3)*Particle.radius/2,-sqrt(3)*Particle.radius/2, 0, sqrt(3)*Particle.radius/2]
+        # x = np.multiply(x,cube_2)
+        # y = np.multiply(y,cube_2)
+        # locations = [x, y]
+        # Simulation.num_particles = len(x)
 
-    # square
-    # x = [Particle.radius, -Particle.radius, 0,0, Particle.radius, -Particle.radius]
-    # y = [0,0,Particle.radius,-Particle.radius,Particle.radius, -Particle.radius]
-    # x = np.multiply(x,cube_2)
-    # y = np.multiply(y,cube_2)
-    # locations = [x, y]
-    # locations = [x, y]
-    # Simulation.num_particles = len(x)
+        # square
+        # x = [Particle.radius, -Particle.radius, 0,0, Particle.radius, -Particle.radius]
+        # y = [0,0,Particle.radius,-Particle.radius,Particle.radius, -Particle.radius]
+        # x = np.multiply(x,cube_2)
+        # y = np.multiply(y,cube_2)
+        # locations = [x, y]
+        # locations = [x, y]
+        # Simulation.num_particles = len(x)
 
-    # locations = generate_square_matrix(3,0,0, nucleation)
-    # Simulation.num_particles = len(locations[0])
-    # locations = None
-    particles = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations)
-    initial_energy = reduce(lambda x, p: x + p.energy, particles, 0)
+        # locations = generate_square_matrix(3,0,0, nucleation)
+        # Simulation.num_particles = len(locations[0])
+        locations = None
+        particles = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations)
+        initial_energy = reduce(lambda x, p: x + p.energy, particles, 0)
+        
+        clock = pygame.time.Clock()
+        myfont = pygame.font.Font('Roboto-Medium.ttf', 10)
+        # https://pygamewidgets.readthedocs.io/
+        # xcoord, ycoord, width, height, min, max
+        # Perform simulation
+        start = time()
+        running = True
+        paths = np.zeros((Simulation.num_steps, len(particles), 4))
+        colours = np.zeros(len(particles))
+        # squeez box
+        # by 50% of the simulation, the box should be x times its original size (x<1)
+        # every how many steps should the box decrease by 1 unit?
+        # number of steps to accomplish squeeze = Simulation.num_steps/2
+        squeeze_size = 0.5
+        # amount of change in box limits:
+        # final box_x = x*Simulation.x_lim
+        final_box_x = squeeze_size*Simulation.x_lim
+        # number of increments required:
+        # final x_lim - final_box_x
+        change_amount = Simulation.x_lim - final_box_x
+        print("change amount "+ str(change_amount))
+        # every step how much should the box decrease
+        step_change_squeeze = change_amount/Simulation.num_steps
+        print("step_change_squeeze "+ str(step_change_squeeze))
+
+        box = Box(Simulation.x_lim, Simulation.y_lim)
+        box_size = np.zeros((Simulation.num_steps, 1))
+        for step in tqdm(range(1,Simulation.num_steps)):
+            #compute forces
+            if squeeze_box:
+                box.set_x(box.box_x - step_change_squeeze)
+                box_size[step] = box.box_x
+            for i, p in enumerate(particles):
+                colours[p.id] = 0 if not p.constant_particle else 1
+                paths[step][p.id][0] = p.x
+                paths[step][p.id][1] = p.y
+                paths[step][p.id][2] = p.energy
+                p.new_ax = 0
+                p.new_ay = 0
+
+                #compute collision interactions
+                
+                for p2 in particles:
+                    if p2.id == p.id:
+                        continue
+                    p.compute_lj_forces(p2)
+                p.compute_wall_forces(box) 
+            
+            # Move particles
+            for p in particles:
+                p.move()
+        np.save('./simulations/' + sim_name + '/'+ sim_name + '.npy', paths)
+        with open('./simulations/' + sim_name + '/' + 'simulation_params.pkl', 'wb') as output:
+            pickle.dump(Simulation, output, pickle.HIGHEST_PROTOCOL)
+    else:
+        paths = np.load('./simulations/' + sim_name + '/'+ sim_name + '.npy')
+        with open('./simulations/' + sim_name + '/' + 'simulation_params.pkl', 'wb') as inp:
+            sim_params = pickle.load(inp)
+            Simulation = Simulation(sim_params)
 
     # Initialize visualization
-    window = init_graphics(particles)
-    
-    clock = pygame.time.Clock()
-    myfont = pygame.font.Font('Roboto-Medium.ttf', 10)
-    # https://pygamewidgets.readthedocs.io/
-    # xcoord, ycoord, width, height, min, max
-    # Perform simulation
-    start = time()
-    running = True
-    energy_display = initial_energy
-    paths = np.zeros((Simulation.num_steps, len(particles), 4))
-    colours = np.zeros(len(particles))
-    # squeez box
-    # by 50% of the simulation, the box should be x times its original size (x<1)
-    # every how many steps should the box decrease by 1 unit?
-    # number of steps to accomplish squeeze = Simulation.num_steps/2
-    squeeze_size = 0.5
-    # amount of change in box limits:
-    # final box_x = x*Simulation.x_lim
-    final_box_x = squeeze_size*Simulation.x_lim
-    # number of increments required:
-    # final x_lim - final_box_x
-    change_amount = Simulation.x_lim - final_box_x
-    print("change amount "+ str(change_amount))
-    # every step how much should the box decrease
-    step_change_squeeze = change_amount/Simulation.num_steps
-    print("step_change_squeeze "+ str(step_change_squeeze))
-
-    box = Box(Simulation.x_lim, Simulation.y_lim)
-    box_size = np.zeros((Simulation.num_steps, 1))
-    for step in tqdm(range(1,Simulation.num_steps)):
-        #compute forces
-        if squeeze_box:
-            box.set_x(box.box_x - step_change_squeeze)
-            box_size[step] = box.box_x
-        for i, p in enumerate(particles):
-            colours[p.id] = 0 if not p.constant_particle else 1
-            paths[step][p.id][0] = p.x
-            paths[step][p.id][1] = p.y
-            paths[step][p.id][2] = p.energy
-            p.new_ax = 0
-            p.new_ay = 0
-
-            #compute collision interactions
-            
-            for p2 in particles:
-                if p2.id == p.id:
-                    continue
-                p.compute_lj_forces(p2)
-            p.compute_wall_forces(box) 
-        
-        # Move particles
-        for p in particles:
-            p.move()
-    
+    window = init_graphics()
     slider = Slider(window, 0, Simulation.WINDOW_HEIGHT + 2*Simulation.SPACING_TEXT, Simulation.WINDOW_WIDTH, 10, min=1, max=1000, step=.05, initial=speed_up)
     counter = 0
     speed_up = speed_up
@@ -616,7 +643,7 @@ def main():
     print("Particle.radius {}".format(Particle.radius))
     max_particle_speed = Particle.dt * Particle.radius
     print("max_particle_speed" + str(max_particle_speed))
-    serial_simulation(1, True, nucleation=True, speed_up=25)
+    serial_simulation(1, True, nucleation=True, speed_up=25, load_data='latest')
     
 
 # d= distance_point_to_wall((0,0),(10,0),10,10)
