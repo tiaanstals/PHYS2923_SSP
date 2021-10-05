@@ -756,7 +756,7 @@ def main():
     print("x_lim {}".format(Simulation.x_lim))
     print("y_lim {}".format(Simulation.y_lim))
     print("Particle.radius {}".format(Particle.radius))
-    serial_simulation(1, True, nucleation=True, speed_up=25, load_data=False,sim_name='gas_random', record_potential=True)
+    serial_simulation(1, True, nucleation=True, speed_up=25, load_data=True,sim_name='gas_random', record_potential=True)
     
 
 # d= distance_point_to_wall((0,0),(10,0),10,10)
