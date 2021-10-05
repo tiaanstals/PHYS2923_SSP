@@ -40,9 +40,9 @@ def lj_force_cutoff(r, SIGMA, EPSILON, SIGMA_6):
 
 
 class Simulation(object):
-    num_particles = 60
-    num_steps = 30000
-    velocity_scaler = 0.2
+    num_particles = 50
+    num_steps = 20000
+    velocity_scaler = 1
     lim = 50
     x_lim, y_lim = lim, lim
     WINDOW_WIDTH = 600
@@ -259,16 +259,16 @@ class Particle(object):
             # here we need to compute new vx and vy and convert to ax and ay
             self.new_ax = -2*self.vx/Particle.dt
             self.new_ay = -2*self.vy/Particle.dt
-            self.force_on_wall += 2*self.vx/Particle.dt
-            self.force_on_wall += 2*self.vy/Particle.dt
+            self.force_on_wall += abs(2*self.vx/Particle.dt)
+            self.force_on_wall += abs(2*self.vy/Particle.dt)
         # vertical wall
         elif vertical_count > 0:
             self.new_ax = -2*self.vx/Particle.dt
-            self.force_on_wall += 2*self.vx/Particle.dt
+            self.force_on_wall += abs(2*self.vx/Particle.dt)
         #horizontal wall
         elif horizontal_count > 0:
             self.new_ay = -2*self.vy/Particle.dt
-            self.force_on_wall += 2*self.vy/Particle.dt
+            self.force_on_wall += abs(2*self.vy/Particle.dt)
         
         energy_after = self.energy_plus_dt
         if isclose(energy_before,0):
@@ -566,12 +566,12 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
         # locations = [x, y]
         # Simulation.num_particles = len(x)
 
-        locations = generate_square_matrix(3,0,0, nucleation)
-        locations = rotate_square_matrix(locations, 0)
-        Simulation.num_particles = len(locations[0])
+        # locations = generate_square_matrix(2,0,0, nucleation)
+        # locations = rotate_square_matrix(locations, 20)
+        # Simulation.num_particles = len(locations[0])
 
 
-        # locations = None
+        locations = None
         particles = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations, fast_particle)
         # Initialize visualization
         
@@ -756,7 +756,7 @@ def main():
     print("x_lim {}".format(Simulation.x_lim))
     print("y_lim {}".format(Simulation.y_lim))
     print("Particle.radius {}".format(Particle.radius))
-    serial_simulation(1, True, nucleation=True, speed_up=25, load_data=True,sim_name='liquid', record_potential=True)
+    serial_simulation(1, True, nucleation=True, speed_up=25, load_data=False,sim_name='gas_random', record_potential=True)
     
 
 # d= distance_point_to_wall((0,0),(10,0),10,10)
