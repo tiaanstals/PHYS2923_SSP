@@ -11,6 +11,8 @@ import numpy as np
 import pygame_widgets
 from pygame_widgets.slider import Slider
 from tqdm import tqdm
+import pickle
+import os
 
 
 def lj_force_cutoff(r, SIGMA, EPSILON, SIGMA_6):
@@ -38,10 +40,10 @@ def lj_force_cutoff(r, SIGMA, EPSILON, SIGMA_6):
 
 
 class Simulation(object):
-    num_particles = 35
-    num_steps = 10000
-    velocity_scaler = 1
-    lim = 30
+    num_particles = 60
+    num_steps = 30000
+    velocity_scaler = 0.2
+    lim = 50
     x_lim, y_lim = lim, lim
     WINDOW_WIDTH = 600
     WINDOW_HEIGHT = 600
@@ -52,7 +54,26 @@ class Simulation(object):
     SIGMA=1
     CUTOFF = 2.5*SIGMA
     SIGMA_6 = SIGMA*SIGMA*SIGMA*SIGMA*SIGMA*SIGMA
-    LJ_FORCE_SHIFT=-lj_force_cutoff(CUTOFF, SIGMA, EPSILON, SIGMA_6)
+    LONG_RANGE_POTENTIAL_CORRECTION=-8*np.pi*(num_particles/(x_lim*y_lim))/(3*CUTOFF**3)
+    # LJ_FORCE_SHIFT=-lj_force_cutoff(CUTOFF, SIGMA, EPSILON, SIGMA_6)
+
+def set_sim_params(params, simulation):
+    simulation.num_particles = params.num_particles
+    simulation.num_steps = params.num_steps
+    simulation.velocity_scaler = params.velocity_scaler
+    simulation.lim = params.lim
+    simulation.x_lim, simulation.y_lim = params.x_lim, params.y_lim
+    simulation.WINDOW_WIDTH = params.WINDOW_WIDTH 
+    simulation.WINDOW_HEIGHT = params.WINDOW_HEIGHT
+    simulation.CONTROL_SPACE = params.CONTROL_SPACE
+    simulation.SPACING_TEXT = params.SPACING_TEXT
+    simulation.DT = params.DT
+    simulation.EPSILON=params.EPSILON
+    simulation.SIGMA=params.SIGMA
+    simulation.CUTOFF = params.CUTOFF
+    simulation.SIGMA_6 = params.SIGMA_6
+    # simulation.LJ_FORCE_SHIFT= params.LJ_FORCE_SHIFT
+    simulation.LONG_RANGE_POTENTIAL_CORRECTION= params.LONG_RANGE_POTENTIAL_CORRECTION
 
 class Box(object):
     def __init__(self, box_x, box_y):
@@ -78,7 +99,7 @@ def draw_circle(window, x, y, radius, color_inner, color_outer):
     pygame.draw.ellipse(window, color_inner, (x-radius/2, y-radius/2, radius,radius))
     
 
-def init_graphics(particles):
+def init_graphics():
     background_colour = WHITE
     pygame.font.init() # you have to call this at the start, 
                    # if you want to use this module.
@@ -154,10 +175,14 @@ class Particle(object):
         self.oldy = y
         self.constant_particle = False
         self.potential_energy = 0
+        self.force_on_wall = 0
     
     def set_new_acc(self, new_ax, new_ay):
         self.ax += new_ax
         self.ay += new_ay
+
+    def set_potential_energy(self,u):
+        self.potential_energy += u
 
     def move(self):
         """ if a particle collides, it cannot continue with the last vx/vy components
@@ -234,23 +259,25 @@ class Particle(object):
             # here we need to compute new vx and vy and convert to ax and ay
             self.new_ax = -2*self.vx/Particle.dt
             self.new_ay = -2*self.vy/Particle.dt
+            self.force_on_wall += 2*self.vx/Particle.dt
+            self.force_on_wall += 2*self.vy/Particle.dt
         # vertical wall
         elif vertical_count > 0:
             self.new_ax = -2*self.vx/Particle.dt
+            self.force_on_wall += 2*self.vx/Particle.dt
         #horizontal wall
         elif horizontal_count > 0:
             self.new_ay = -2*self.vy/Particle.dt
+            self.force_on_wall += 2*self.vy/Particle.dt
         
         energy_after = self.energy_plus_dt
         if isclose(energy_before,0):
             return
-        ratio = energy_after/energy_before
-        # if vertical_count + horizontal_count > 0:
-        #     print(ratio)
-        #     self.print()
+
+
         return
 
-    def compute_lj_forces(self, other_p):
+    def compute_lj_forces(self, other_p, record_potential):
         """
         Calculate the acceleration on each 
         particle as a  result of each other 
@@ -263,8 +290,12 @@ class Particle(object):
         r2 = sqrt(rx*rx+ry*ry)
 
         lj_f = lj_force(r2)
+        if record_potential:
+            lj_u = lj_potential(r2)
+            self.potential_energy += lj_u
+            other_p.set_potential_energy(lj_u)
         if isclose(lj_f, 0):
-            return
+            return r2
         # old_ax = self.new_ax
         energy_before = self.energy + other_p.energy
         # if lj_f is positive, acceleration should be in the direction of the vector which points from p2 to p1 (repulsive)
@@ -272,7 +303,7 @@ class Particle(object):
         self.set_new_acc(lj_f*rx/r2,lj_f*ry/r2)
         # by newtons third law
         other_p.set_new_acc(-lj_f*rx/r2,-lj_f*ry/r2)
-        return
+        return r2
     
     def change_temp(self, change):
         energy_before = self.energy
@@ -294,6 +325,10 @@ class Particle(object):
         vy = vy_half + (self.dt*self.new_ay)/2
         return 0.5 * (vx ** 2 + vy ** 2)
 
+    @property 
+    def total_velocity(self):
+        return sqrt(self.vx**2+self.vy**2)
+
     
 ###########################
 # MATH FUNCTIONS #
@@ -306,9 +341,8 @@ def distance_point_to_wall(WALL_START, WALL_END, x, y):
     d = abs((wall_end_x - wall_start_x)*(wall_start_y-y)-(wall_start_x-x)*(wall_end_y-wall_start_y))**2/((wall_end_x-wall_start_x)**2 + (wall_end_y-wall_start_y)**2)
     return d
 
-radius_dist = (Particle.radius)
 def closer_than_radius(distance):
-    if distance <= radius_dist:
+    if distance <= Particle.radius:
         # print("closer")
         return 1
     else:
@@ -341,8 +375,28 @@ def lj_force(r):
     # attractive force is -(sigma/r)^6
     attractive = -inv_r_6*inv_r*Simulation.SIGMA_6*Simulation.SIGMA
     #final force F(r)=-du(r)/dr=24*(epsilon/sigma)*(2*(sigma/r)^13 - (sigma/r)^6) = constant*(repulsive + attractive) + force_shift
-    lf = const*(repulsive + attractive) + Simulation.LJ_FORCE_SHIFT
+    lf = const*(repulsive + attractive)
     return lf
+
+def lj_potential(r):
+    """
+    Implementation of the Lennard-Jones potential 
+    used for calculating the potential energy of the particle during the interaction
+    """
+    inv_r = 1/r
+    r_squared = r*r
+    inv_r_squared = 1/r_squared
+    inv_r_6 = inv_r_squared*inv_r_squared*inv_r_squared
+    # constant out front is 4* epsilon
+    const = 4*Simulation.EPSILON
+
+    # by convention repuslive force is positve and attractive force is negative
+    # repulsive force is (sigma/r)^12
+    repulsive = inv_r_6*inv_r_6*Simulation.SIGMA_6*Simulation.SIGMA_6
+    # attractive force is -(sigma/r)^6
+    attractive = -inv_r_6**Simulation.SIGMA_6
+    lu = const*(repulsive + attractive)
+    return lu
 
 
 def generate_square_matrix(n, x_mid, y_mid,nucleation):
@@ -425,6 +479,7 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False):
         p.vy -= mean_vy
     if nucleation:
         new_particle = Particle(Simulation.x_lim/2, Simulation.y_lim/2,0,0,0,0,next_p)
+        new_particle.potential_energy = 0
         new_particle.constant_particle = False
         particles.append(new_particle)
         next_p += 1
@@ -473,103 +528,148 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False):
 #####################
 # Serial Simulation #
 #####################
-def serial_simulation(update_interval=1, label_particles=False, normalize_energy=True, nucleation=False, speed_up=5, squeeze_box=False):
+def serial_simulation(update_interval=1, label_particles=False, normalize_energy=True, nucleation=False, speed_up=5, squeeze_box=False, load_data=False,
+                        sim_name='latest', fast_particle=False, record_potential=False):
 
     # Create particles
-    cube_2 = cube_root(2)
-    #hexagon
-    # equilibrium distance is cuberoot(2)
-    # https://www.wolframalpha.com/input/?i=roots+24*%282%281%2Fx%29%5E13-0.5*%281%2Fx%29%5E7%29
-    # thus all distances should be cuberoot(3)*value
-    # https://www.wolframalpha.com/input/?i=roots+24*%282%281%2Fx%29%5E13-0.5*%281%2Fx%29%5E7%29
-    # 
-    # x = [Particle.radius/2, Particle.radius, Particle.radius/2, -Particle.radius/2, -Particle.radius,-Particle.radius/2]
-    # y = [sqrt(3)*Particle.radius/2, 0, -sqrt(3)*Particle.radius/2,-sqrt(3)*Particle.radius/2, 0, sqrt(3)*Particle.radius/2]
-    # x = np.multiply(x,cube_2)
-    # y = np.multiply(y,cube_2)
-    # locations = [x, y]
-    # Simulation.num_particles = len(x)
+    if not load_data:
+        cube_2 = cube_root(2)
+        #hexagon
+        # equilibrium distance is cuberoot(2)
+        # https://www.wolframalpha.com/input/?i=roots+24*%282%281%2Fx%29%5E13-0.5*%281%2Fx%29%5E7%29
+        # thus all distances should be cuberoot(3)*value
+        # https://www.wolframalpha.com/input/?i=roots+24*%282%281%2Fx%29%5E13-0.5*%281%2Fx%29%5E7%29
+        # 
+        # x = [Particle.radius/2, Particle.radius, Particle.radius/2, -Particle.radius/2, -Particle.radius,-Particle.radius/2]
+        # y = [sqrt(3)*Particle.radius/2, 0, -sqrt(3)*Particle.radius/2,-sqrt(3)*Particle.radius/2, 0, sqrt(3)*Particle.radius/2]
+        # x = np.multiply(x,cube_2)
+        # y = np.multiply(y,cube_2)
+        # locations = [x, y]
+        # Simulation.num_particles = len(x)
 
-    # conway hexagon
-    r_1 = cube_2
-    r_2 = cube_2*2
-    x = [r_1 * cos(0), r_1 * cos(pi/3), r_1 * cos(2*pi/3), r_1 * cos(pi), r_1 * cos(4*pi/3), r_1 * cos(5*pi/3)]
-    y = [r_1 * sin(0), r_1 * sin(pi/3), r_1 * sin(2*pi/3), r_1 * sin(pi), r_1 * sin(4*pi/3), r_1 * sin(5*pi/3)]
-    x_2 = [r_2 * cos(pi/2), r_2 * cos(5*pi/6), r_2 * cos(7*pi/6), r_2 * cos(9*pi/6), r_2 * cos(11*pi/6), r_2 * cos(13*pi/6)]
-    y_2 = [r_2 * sin(pi/2), r_2 * sin(5*pi/6), r_2 * sin(7*pi/6), r_2 * sin(9*pi/6), r_2 * sin(11*pi/6), r_2 * sin(13*pi/6)]
-    locations = [x+x_2, y+y_2]
-    Simulation.num_particles = len(x)
+        # conway hexagon
+        # r_1 = cube_2
+        # r_2 = cube_2*2
+        # x = [r_1 * cos(0), r_1 * cos(pi/3), r_1 * cos(2*pi/3), r_1 * cos(pi), r_1 * cos(4*pi/3), r_1 * cos(5*pi/3)]
+        # y = [r_1 * sin(0), r_1 * sin(pi/3), r_1 * sin(2*pi/3), r_1 * sin(pi), r_1 * sin(4*pi/3), r_1 * sin(5*pi/3)]
+        # x_2 = [r_2 * cos(pi/2), r_2 * cos(5*pi/6), r_2 * cos(7*pi/6), r_2 * cos(9*pi/6), r_2 * cos(11*pi/6), r_2 * cos(13*pi/6)]
+        # y_2 = [r_2 * sin(pi/2), r_2 * sin(5*pi/6), r_2 * sin(7*pi/6), r_2 * sin(9*pi/6), r_2 * sin(11*pi/6), r_2 * sin(13*pi/6)]
+        # locations = [x+x_2, y+y_2]
+        # Simulation.num_particles = len(x)
 
-    # square
-    # x = [Particle.radius, -Particle.radius, 0,0, Particle.radius, -Particle.radius]
-    # y = [0,0,Particle.radius,-Particle.radius,Particle.radius, -Particle.radius]
-    # x = np.multiply(x,cube_2)
-    # y = np.multiply(y,cube_2)
-    # locations = [x, y]
-    # locations = [x, y]
-    # Simulation.num_particles = len(x)
+        # square
+        # x = [Particle.radius, -Particle.radius, 0,0, Particle.radius, -Particle.radius]
+        # y = [0,0,Particle.radius,-Particle.radius,Particle.radius, -Particle.radius]
+        # x = np.multiply(x,cube_2)
+        # y = np.multiply(y,cube_2)
+        # locations = [x, y]
+        # locations = [x, y]
+        # Simulation.num_particles = len(x)
 
-    # locations = generate_square_matrix(2,0,0, nucleation)
-    # locations = rotate_square_matrix(locations, 0)
-    Simulation.num_particles = len(locations[0])
-    # locations = None
-    particles = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations, fast_particle=True)
-    # Initialize visualization
-    window = init_graphics(particles)
+        locations = generate_square_matrix(3,0,0, nucleation)
+        locations = rotate_square_matrix(locations, 0)
+        Simulation.num_particles = len(locations[0])
+
+
+        # locations = None
+        particles = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations, fast_particle)
+        # Initialize visualization
+        
+
+        # Perform simulation
+        start = time()
+        running = True
+        paths = np.zeros((Simulation.num_steps, len(particles), 6))
+        rdf_data = np.zeros((Simulation.num_steps, len(particles), len(particles)))
+        colours = np.zeros(len(particles))
+        # squeez box
+        # by 50% of the simulation, the box should be x times its original size (x<1)
+        # every how many steps should the box decrease by 1 unit?
+        # number of steps to accomplish squeeze = Simulation.num_steps/2
+        squeeze_size = 0.5
+        # amount of change in box limits:
+        # final box_x = x*Simulation.x_lim
+        final_box_x = squeeze_size*Simulation.x_lim
+        # number of increments required:
+        # final x_lim - final_box_x
+        change_amount = Simulation.x_lim - final_box_x
+        print("change amount "+ str(change_amount))
+        # every step how much should the box decrease
+        step_change_squeeze = change_amount/Simulation.num_steps
+        print("step_change_squeeze "+ str(step_change_squeeze))
+
+        box = Box(Simulation.x_lim, Simulation.y_lim)
+        box_size = np.zeros((Simulation.num_steps, 1))
+        for step in tqdm(range(1,Simulation.num_steps)):
+            #compute forces
+            if squeeze_box:
+                box.set_x(box.box_x - step_change_squeeze)
+                box_size[step] = box.box_x
+            for i, p in enumerate(particles):
+                colours[p.id] = 0 if not p.constant_particle else 1
+                paths[step][p.id][0] = p.x
+                paths[step][p.id][1] = p.y
+                # kinetic energy
+                paths[step][p.id][2] = p.energy
+
+
+                # potential energy
+                if record_potential:
+                    paths[step][p.id][3] = p.potential_energy
+
+                # forces on walls (used for pressure calcs)
+                paths[step][p.id][4] = p.force_on_wall
+
+                # total velocity (since m = 1, p = v)
+                paths[step][p.id][5] = p.total_velocity
+
+
+                p.new_ax = 0
+                p.new_ay = 0
+                p.force_on_wall = 0
+                p.potential_energy = 0
+
+                #compute collision interactions
+                
+                for p2 in particles:
+                    if p2.id == p.id:
+                        continue
+                    r = p.compute_lj_forces(p2, record_potential)
+                    rdf_data[step][p.id][p2.id] = r
+                    rdf_data[step][p2.id][p.id] = r
+                p.compute_wall_forces(box) 
+            
+            # Move particles
+            for p in particles:
+                p.move()
+        try:
+            os.mkdir('./simulations/' + sim_name)
+        except OSError:
+            print ("Creation of the directory failed")
+        else:
+            print ("Successfully created the directory")
+        
+        np.save('./simulations/' + sim_name + '/'+ sim_name + '.npy', paths)
+        np.save('./simulations/' + sim_name + '/'+ sim_name + '_colours.npy', colours)
+        np.save('./simulations/' + sim_name + '/'+ sim_name + '_rdf_data.npy', rdf_data)
+        with open('./simulations/' + sim_name + '/' + 'simulation_params.pkl', 'wb') as output:
+            simulation = Simulation()
+            pickle.dump(simulation, output, pickle.HIGHEST_PROTOCOL)
+        params_for_analysis = {'x_lim': Simulation.x_lim, 'y_lim': Simulation.y_lim}
+        with open('./simulations/' + sim_name + '/' + 'simulation_params_for_analysis.pkl', 'wb') as output:
+            pickle.dump(params_for_analysis, output, pickle.HIGHEST_PROTOCOL)
+    else:
+        paths = np.load('./simulations/' + sim_name + '/'+ sim_name + '.npy')
+        colours = np.load('./simulations/' + sim_name + '/'+ sim_name + '_colours.npy')
+        with open('./simulations/' + sim_name + '/' + 'simulation_params.pkl', 'rb') as inp:
+            sim_params = pickle.load(inp)
+            set_sim_params(sim_params, Simulation)
     
+    window = init_graphics()
     clock = pygame.time.Clock()
     myfont = pygame.font.Font('Roboto-Medium.ttf', 10)
     # https://pygamewidgets.readthedocs.io/
     # xcoord, ycoord, width, height, min, max
-    # Perform simulation
-    start = time()
-    running = True
-    paths = np.zeros((Simulation.num_steps, len(particles), 5))
-    colours = np.zeros(len(particles))
-    # squeez box
-    # by 50% of the simulation, the box should be x times its original size (x<1)
-    # every how many steps should the box decrease by 1 unit?
-    # number of steps to accomplish squeeze = Simulation.num_steps/2
-    squeeze_size = 0.5
-    # amount of change in box limits:
-    # final box_x = x*Simulation.x_lim
-    final_box_x = squeeze_size*Simulation.x_lim
-    # number of increments required:
-    # final x_lim - final_box_x
-    change_amount = Simulation.x_lim - final_box_x
-    print("change amount "+ str(change_amount))
-    # every step how much should the box decrease
-    step_change_squeeze = change_amount/Simulation.num_steps
-    print("step_change_squeeze "+ str(step_change_squeeze))
-
-    box = Box(Simulation.x_lim, Simulation.y_lim)
-    box_size = np.zeros((Simulation.num_steps, 1))
-    for step in tqdm(range(1,Simulation.num_steps)):
-        #compute forces
-        if squeeze_box:
-            box.set_x(box.box_x - step_change_squeeze)
-            box_size[step] = box.box_x
-        for i, p in enumerate(particles):
-            colours[p.id] = 0 if not p.constant_particle else 1
-            paths[step][p.id][0] = p.x
-            paths[step][p.id][1] = p.y
-            # kinetic energy
-            paths[step][p.id][2] = p.energy
-            p.new_ax = 0
-            p.new_ay = 0
-
-            #compute collision interactions
-            
-            for p2 in particles:
-                if p2.id == p.id:
-                    continue
-                p.compute_lj_forces(p2)
-            p.compute_wall_forces(box) 
-        
-        # Move particles
-        for p in particles:
-            p.move()
-    np.save('./for_analysis/35_30.npy', paths)
     slider = Slider(window, 0, Simulation.WINDOW_HEIGHT + 2*Simulation.SPACING_TEXT, Simulation.WINDOW_WIDTH, 10, min=1, max=1000, step=.05, initial=speed_up)
     counter = 0
     speed_up = speed_up
@@ -656,9 +756,7 @@ def main():
     print("x_lim {}".format(Simulation.x_lim))
     print("y_lim {}".format(Simulation.y_lim))
     print("Particle.radius {}".format(Particle.radius))
-    max_particle_speed = Particle.dt * Particle.radius
-    print("max_particle_speed" + str(max_particle_speed))
-    serial_simulation(1, True, nucleation=True, speed_up=25)
+    serial_simulation(1, True, nucleation=True, speed_up=25, load_data=True,sim_name='liquid', record_potential=True)
     
 
 # d= distance_point_to_wall((0,0),(10,0),10,10)
