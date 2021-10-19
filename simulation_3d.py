@@ -13,6 +13,8 @@ from pygame_widgets.slider import Slider
 from tqdm import tqdm
 import pickle
 import os
+import vpython
+from vpython import vector, curve, sphere, color, canvas, points
 
 
 def lj_force_cutoff(r, SIGMA, EPSILON, SIGMA_6):
@@ -40,9 +42,9 @@ def lj_force_cutoff(r, SIGMA, EPSILON, SIGMA_6):
 
 
 class Simulation(object):
-    num_particles = 50
-    num_steps = 20000
-    velocity_scaler = 0.3
+    num_particles = 10
+    num_steps = 1000
+    velocity_scaler = 1
     lim = 20
     x_lim, y_lim = lim, lim
     WINDOW_WIDTH = 600
@@ -110,6 +112,63 @@ def init_graphics():
     window.fill(background_colour)
     return window
 
+def init_graphics3d():
+    win = Simulation.WINDOW_HEIGHT
+    L = Simulation.WINDOW_HEIGHT # container is a cube L on a side
+    gray = color.gray(0.7) # color of edges of container
+
+    animation = canvas( width=win, height=win, align='left', center=vector(L/2,L/2,L/2))
+    animation.range = L
+    animation.title = 'A "hard-sphere" gas'
+    s = """  Theoretical and averaged speed distributions (meters/sec).
+    Initially all atoms have the same speed, but collisions
+    change the speeds of the colliding atoms. One of the atoms is
+    marked and leaves a trail so you can follow its path.
+    
+    """
+    animation.caption = s
+
+    d = L
+    r = Simulation.WINDOW_HEIGHT/100
+    boxbottom = curve(color=gray, radius=r)
+    boxbottom.append([vector(0,0,0), vector(d,0,0), vector(d,d,0), vector(0,d,0), vector(0,0,0)])
+    boxtop = curve(color=gray, radius=r)
+    boxtop.append([vector(0,0,d), vector(d,0,d), vector(d,d,d), vector(0,d,d), vector(0,0,d)])
+    vert1 = curve(color=gray, radius=r)
+    vert2 = curve(color=gray, radius=r)
+    vert3 = curve(color=gray, radius=r)
+    vert4 = curve(color=gray, radius=r)
+    vert1.append([vector(0,0,0), vector(0,0,d)])
+    vert2.append([vector(d,0,0), vector(d,0,d)])
+    vert3.append([vector(d,d,0), vector(d,d,d)])
+    vert4.append([vector(0,d,0), vector(0,d,d)])
+    # animation = vpython.canvas( width=Simulation.WINDOW_WIDTH, height=Simulation.WINDOW_WIDTH, align='left')
+    # animation.range = Simulation.WINDOW_WIDTH
+    # animation.title = 'A "hard-sphere" gas'
+    # s = """  Theoretical and averaged speed distributions (meters/sec).
+    # Initially all atoms have the same speed, but collisions
+    # change the speeds of the colliding atoms. One of the atoms is
+    # marked and leaves a trail so you can follow its path.
+    
+    # """
+    # animation.caption = s
+    # gray =  vpython.color.gray(0.7)
+    # r = 0.005
+    # d = Simulation.WINDOW_WIDTH
+    # boxbottom = vpython.curve(color=gray, radius=r)
+    # boxbottom.append([vector(-d,-d,-d), vector(-d,-d,d), vector(d,-d,d), vector(d,-d,-d), vector(-d,-d,-d)])
+    # boxtop = curve(color=gray, radius=r)
+    # boxtop.append([vector(-d,d,-d), vector(-d,d,d), vector(d,d,d), vector(d,d,-d), vector(-d,d,-d)])
+    # vert1 = curve(color=gray, radius=r)
+    # vert2 = curve(color=gray, radius=r)
+    # vert3 = curve(color=gray, radius=r)
+    # vert4 = curve(color=gray, radius=r)
+    # vert1.append([vector(-d,-d,-d), vector(-d,d,-d)])
+    # vert2.append([vector(-d,-d,d), vector(-d,d,d)])
+    # vert3.append([vector(d,-d,d), vector(d,d,d)])
+    # vert4.append([vector(d,-d,-d), vector(d,d,-d)])
+    return animation
+
 def draw_line(window, coord_1, coord_2):
     pygame.draw.line(window, BLACK, coord_1, coord_2)
             
@@ -155,7 +214,7 @@ class Particle(object):
     radius = 1
     mass = 1
 
-    display_radius = to_display_scale(radius)
+    display_radius = 0.9*to_display_scale(radius)
 
     dt = Simulation.DT
 
@@ -164,30 +223,30 @@ class Particle(object):
     sigma=Simulation.SIGMA
 
 
-    def __init__(self, x, y, vx, vy, ax, ay, id):
+    def __init__(self, x, y, z, vx, vy, vz, ax, ay, az, id):
         self.x = x
         self.y = y
+        self.z = z
         self.vx = vx
         self.vy = vy
+        self.vz = vz
         self.ax = ax
         self.ay = ay
-        self.oldx = None
-        self.oldy = None
+        self.az = az
         self.new_ax = 0
         self.new_ay = 0
         self.id = id
         self.collision = False
-        self.oldx = x
-        self.oldy = y
         self.constant_particle = False
         self.potential_energy = 0
         self.force_on_wall = 0
         self.lattice_position = False
         self.dont_move_overlap = False
     
-    def set_new_acc(self, new_ax, new_ay):
+    def set_new_acc(self, new_ax, new_ay, new_az):
         self.ax += new_ax
         self.ay += new_ay
+        self.az += new_az
 
     def set_potential_energy(self,u):
         self.potential_energy += u
@@ -202,14 +261,18 @@ class Particle(object):
         if (not self.constant_particle) and (not self.lattice_position):
             vx_half = self.vx + (self.ax*self.dt)/2
             vy_half = self.vy + (self.ay*self.dt)/2
+            vz_half = self.vz + (self.az*self.dt)/2
 
             self.x = self.x + vx_half * self.dt
             self.y = self.y + vy_half * self.dt 
+            self.z = self.z + vz_half * self.dt 
 
             self.vx = vx_half + (self.dt*self.new_ax)/2
             self.vy = vy_half + (self.dt*self.new_ay)/2
+            self.vz = vz_half + (self.dt*self.new_az)/2
             self.ax = self.new_ax
             self.ay = self.new_ay
+            self.az = self.new_az
 
     
     def print(self):
@@ -224,65 +287,16 @@ class Particle(object):
         print("new_ay: " + str(self.new_ay))
     
     def compute_wall_forces(self, box):
-        energy_before = self.energy
-        BOTTOM_LEFT = (0, 0)
-        BOTTOM_RIGHT = (box.box_x, 0)
-        TOP_LEFT = (0, box.box_y)
-        TOP_RIGHT = (box.box_x,box.box_y)
-        
-        horizontal_count = 0
-        vertical_count = 0
-
-        #compute distances
-        d_left_wall = distance_point_to_wall(BOTTOM_LEFT, TOP_LEFT, self.x, self.y)
-        d_right_wall = distance_point_to_wall(BOTTOM_RIGHT, TOP_RIGHT, self.x, self.y)
-        d_bottom_wall = distance_point_to_wall(BOTTOM_LEFT, BOTTOM_RIGHT, self.x, self.y)
-        d_top_wall = distance_point_to_wall(TOP_LEFT, TOP_RIGHT, self.x, self.y)
-
-        # check if any particles satisfies close condition. Note they must be heading in the right direction too!
-
-        
-        left_wall = closer_than_radius(d_left_wall)
-        if left_wall == 1 and self.vx > 0:
-            left_wall = 0
-        
-        right_wall = closer_than_radius(d_right_wall)
-        if right_wall == 1 and self.vx < 0:
-            right_wall = 0
-
-        top_wall = closer_than_radius(d_top_wall)
-        if top_wall == 1 and self.vy < 0:
-            top_wall = 0
-        bottom_wall = closer_than_radius(d_bottom_wall)
-        if bottom_wall == 1 and self.vy > 0:
-            bottom_wall = 0   
-
-        ## First check horizontal walls
-        vertical_count = left_wall + right_wall
-        horizontal_count = bottom_wall + top_wall
-        # print("vertical_count" + str(vertical_count))
-        # print("horizontal_count" + str(horizontal_count))
-        # corner
-        if vertical_count + horizontal_count > 1:
-            # here we need to compute new vx and vy and convert to ax and ay
-            self.new_ax = -2*self.vx/Particle.dt
-            self.new_ay = -2*self.vy/Particle.dt
-            self.force_on_wall += abs(2*self.vx/Particle.dt)
-            self.force_on_wall += abs(2*self.vy/Particle.dt)
-        # vertical wall
-        elif vertical_count > 0:
+        limit = box.box_x
+        if (self.x > limit and self.vx > 0) or (self.x < 0 and self.vx < 0):
             self.new_ax = -2*self.vx/Particle.dt
             self.force_on_wall += abs(2*self.vx/Particle.dt)
-        #horizontal wall
-        elif horizontal_count > 0:
+        elif (self.y > limit and self.vy > 0) or (self.y < 0 and self.vy < 0):
             self.new_ay = -2*self.vy/Particle.dt
             self.force_on_wall += abs(2*self.vy/Particle.dt)
-        
-        energy_after = self.energy_plus_dt
-        if isclose(energy_before,0):
-            return
-
-
+        elif (self.z > limit and self.vz > 0) or (self.z < 0 and self.vz < 0):
+            self.new_az = -2*self.vz/Particle.dt
+            self.force_on_wall += abs(2*self.vz/Particle.dt)
         return
 
     def compute_lj_forces(self, other_p, record_potential):
@@ -297,7 +311,8 @@ class Particle(object):
             return -1
         rx = self.x - other_p.x
         ry = self.y - other_p.y
-        r2 = sqrt(rx*rx+ry*ry)
+        rz = self.z - other_p.z
+        r2 = sqrt(rx*rx+ry*ry+rz*rz)
 
         lj_f = lj_force(r2)
         if record_potential:
@@ -310,15 +325,16 @@ class Particle(object):
         energy_before = self.energy + other_p.energy
         # if lj_f is positive, acceleration should be in the direction of the vector which points from p2 to p1 (repulsive)
         # if lj_f is negative, acceleration should be in the direction of the vector which points from p1 to p2 (attractive)
-        self.set_new_acc(lj_f*rx/r2,lj_f*ry/r2)
+        self.set_new_acc(lj_f*rx/r2,lj_f*ry/r2,lj_f*rz/r2)
         # by newtons third law
-        other_p.set_new_acc(-lj_f*rx/r2,-lj_f*ry/r2)
+        other_p.set_new_acc(-lj_f*rx/r2,-lj_f*ry/r2,-lj_f*rz/r2)
         return r2
     
     def compute_lattice_forces(self, other_p):
         rx = self.x - other_p.x
         ry = self.y - other_p.y
-        r2 = sqrt(rx*rx+ry*ry)
+        rz = self.z - other_p.z
+        r2 = sqrt(rx*rx+ry*ry+rz*rz)
 
         lj_f = lj_force_attractive_only(r2)
         if isclose(lj_f, 0):
@@ -330,34 +346,37 @@ class Particle(object):
 
         if isclose(r2, 0):
             return 0
-        self.set_new_acc(lj_f*rx/r2,lj_f*ry/r2)
+        self.set_new_acc(lj_f*rx/r2,lj_f*ry/r2,lj_f*rz/r2)
         # by newtons third law
-        other_p.set_new_acc(-lj_f*rx/r2,-lj_f*ry/r2)
+        other_p.set_new_acc(-lj_f*rx/r2,-lj_f*ry/r2,-lj_f*rz/r2)
         return r2
     
     def change_temp(self, change):
         energy_before = self.energy
         self.vx = self.vx + self.vx*change
         self.vy = self.vx + self.vx*change
+        self.vz = self.vz + self.vz*change
         return self.energy - energy_before
     
     @property
     def energy(self):
         """Return the kinetic energy of this particle."""
-        return 0.5 * (self.vx ** 2 + self.vy ** 2)
+        return 0.5 * (self.vx ** 2 + self.vy ** 2 + self.vz**2)
     
     @property 
     def energy_plus_dt(self):
         """Return the kinetic energy in 1 step"""
         vx_half = self.vx + (self.ax*self.dt)/2
         vy_half = self.vy + (self.ay*self.dt)/2
+        vz_half = self.vz + (self.az*self.dt)/2
         vx = vx_half + (self.dt*self.new_ax)/2
         vy = vy_half + (self.dt*self.new_ay)/2
-        return 0.5 * (vx ** 2 + vy ** 2)
+        vz = vz_half + (self.dt*self.new_az)/2
+        return 0.5 * (vx ** 2 + vy ** 2 + vz**2)
 
     @property 
     def total_velocity(self):
-        return sqrt(self.vx**2+self.vy**2)
+        return sqrt(self.vx**2+self.vy**2 + self.vz**2)
 
     
 ###########################
@@ -475,6 +494,27 @@ def generate_square_matrix(n, x_mid, y_mid,nucleation):
             y.append(y_coord)
     return [x,y]
 
+def generate_square_matrix_3d(n, x_mid, y_mid, z_mid, nucleation):
+    cube_2 = cube_root(2)
+    first_x = x_mid - cube_2*n*Particle.radius
+    first_y = y_mid - cube_2*n*Particle.radius
+    first_z = z_mid - cube_2*n*Particle.radius
+    x = []
+    y = []
+    z = []
+    for i in range(2*n+1):
+        for j in range(2*n+1):
+            for k in range(2*n+1):
+                x_coord = first_x + i*cube_2*Particle.radius 
+                y_coord = first_y + j*cube_2*Particle.radius
+                z_coord = first_z + k*cube_2*Particle.radius
+                if isclose(x_mid, x_coord) and isclose(y_mid,y_coord) and nucleation and isclose(z_mid,z_coord):
+                    continue
+                x.append(x_coord)
+                y.append(y_coord)
+                z.append(z_coord)
+    return [x,y,z]
+
 def cube_root(x):
     if 0<=x: return x**(1./3.)
     return -(-x)**(1./3.)
@@ -496,64 +536,89 @@ def rotate_square_matrix(mat,deg):
 ##################
 # Initialization #
 ##################
-def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, lattice_structure=False, lattice_size=2):
+def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, lattice_structure=False, lattice_size=1):
     """Construct a list of n particles in two dimensions, initially distributed
     evenly but with random velocities. The resulting list is not spatially
     sorted."""
     seed(2000)
-    particles = [Particle(0, 0, 0, 0, 0, 0, _) for _ in range(n)]
+    particles = [Particle(0, 0, 0, 0, 0, 0, 0, 0, 0, _) for _ in range(n)]
     next_p = len(particles)
     # Make sure particles are not spatially sorted
     shuffle(particles)
     vx_list = []
     vy_list = []
+    vz_list = []
     if locations is not None:
         for i, p in enumerate(particles):
             p.x = Simulation.x_lim/2 + locations[0][i]
             p.y = Simulation.y_lim/2 + locations[1][i]
+            p.z = Simulation.y_lim/2 + locations[2][i]
             p.xy = 0
             p.vy = 0
+            p.vz = 0
             p.ax = 0
             p.ay = 0
+            p.az = 0
             vx_list.append(p.vx)
             vy_list.append(p.vy)
+            vz_list.append(p.vz)
     elif lattice_structure:
         # generates a 2d array with coordinates for the lattice
-        locations = generate_square_matrix(lattice_size,0,0, nucleation)
+        locations = generate_square_matrix_3d(lattice_size,0,0,0, nucleation=False)
         # locations = rotate_square_matrix(locations, 20)
         # first create lattice position particles
         particles = []
         for i in range(len(locations[0])):
-            particles.append(Particle(0,0,0,0,0,0,i))
+            particles.append(Particle(0, 0, 0, 0, 0, 0, 0, 0, 0,i))
             # this property means the "particle" is actually just a preferred position
             particles[i].lattice_position = True
-            particles[i].x = Simulation.x_lim/2 + locations[0][i]
+            particles[i].x = Simulation.y_lim/2 + locations[0][i]
             particles[i].y = Simulation.y_lim/2 + locations[1][i]
+            particles[i].z = Simulation.y_lim/2 + locations[2][i]
         print(len(particles))
         next_p = i + 1
+        minimum = min(locations[0])
+        maximum = max(locations[0])
+        print(minimum)
+        print(maximum)
         for i in range(len(locations[0])):
-            populate = random() < 0.95
-            particle = Particle(0,0,0,0,0,0,next_p)
+            outer_edge = False
+            for j in range(3):
+                if isclose(locations[j][i],minimum) or isclose(locations[j][i],maximum):
+                    outer_edge = True
+                    print("i: " + str(i))
+                    print("j: " + str(j))
+            if outer_edge:
+                populate = random() < 0.9
+            else:
+                populate = True
+            particle = Particle(0, 0, 0, 0, 0, 0, 0, 0, 0,next_p)
             particle.x = Simulation.x_lim/2 + locations[0][i]
             particle.y = Simulation.y_lim/2 + locations[1][i]
+            particle.z = Simulation.y_lim/2 + locations[2][i]
             particle.dont_move_overlap = True
+            print(populate)
             if populate:
                 particles.append(particle)
                 vx_list.append(particle.vx)
                 vy_list.append(particle.vy)
+                vz_list.append(particle.vz)
                 next_p += 1
             print(next_p)
         
         # add in some other particles
-        for i in range(round(len(locations[0]) * 0.5)):
-            particle = Particle(0,0,0,0,0,0,next_p)
+        for i in range(round(len(locations[0]) * 0.2)):
+            particle = Particle(0, 0, 0, 0, 0, 0, 0, 0, 0,next_p)
             particle.x = uniform(0+Particle.radius, Simulation.x_lim-Particle.radius)
             particle.y = uniform(0+Particle.radius, Simulation.y_lim-Particle.radius)
+            particle.z = uniform(0+Particle.radius, Simulation.y_lim-Particle.radius)
             particle.vx = temp_scale*uniform(-Simulation.x_lim, Simulation.x_lim)
             particle.vy = temp_scale*uniform(-Simulation.y_lim, Simulation.y_lim)
+            particle.vz = temp_scale*uniform(-Simulation.y_lim, Simulation.y_lim)
             particles.append(particle)
             vx_list.append(particle.vx)
             vy_list.append(particle.vy)
+            vz_list.append(particle.vz)
             next_p += 1                
             print(next_p)
     else:
@@ -561,23 +626,27 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
             # Distribute particles randomly in our box
             p.x = uniform(0+Particle.radius, Simulation.x_lim-Particle.radius)
             p.y = uniform(0+Particle.radius, Simulation.y_lim-Particle.radius)
-
+            p.z = uniform(0+Particle.radius, Simulation.y_lim-Particle.radius)
             # Assign random velocities within a bound
             p.vx = temp_scale*uniform(-Simulation.x_lim, Simulation.x_lim)
             p.vy = temp_scale*uniform(-Simulation.y_lim, Simulation.y_lim)
+            p.vz = temp_scale*uniform(-Simulation.y_lim, Simulation.y_lim)
             vx_list.append(p.vx)
             vy_list.append(p.vy)
+            vz_list.append(p.vz)
             p.ax = 0
             p.ay = 0
-    
+            p.az = 0
     # let total linear momentum be initially 0
     mean_vx = sum(vx_list)/len(vx_list)
     mean_vy = sum(vy_list)/len(vy_list)
+    mean_vz = sum(vz_list)/len(vz_list)
     for p in particles:
         p.vx -= mean_vx
         p.vy -= mean_vy
+        p.vz -= mean_vz
     if nucleation:
-        new_particle = Particle(Simulation.x_lim/2, Simulation.y_lim/2,0,0,0,0,next_p)
+        new_particle = Particle(Simulation.x_lim/2, Simulation.y_lim/2,Simulation.y_lim/2,0,0,0,0,0,0,next_p)
         new_particle.potential_energy = 0
         new_particle.constant_particle = False
         particles.append(new_particle)
@@ -606,7 +675,7 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
         print(overlap)
         for i, p in enumerate(particles):
             for p2 in particles[i+1:]:
-                if round(sqrt((p.x-p2.x)**2 + (p.y-p2.y)**2),2) < (1.5*Particle.radius):
+                if round(sqrt((p.x-p2.x)**2 + (p.y-p2.y)**2 + (p.z-p2.z)**2),2) < (1.5*Particle.radius):
                     # print("Particle 1: [" + str(p.x) + "," + str(p.y) + "]")
                     # print("Particle 2: [" + str(p2.x) + "," + str(p2.y) + "]")
                     # print("(px - p2x)**2 = " + str((p.x-p2.x)**2))
@@ -618,10 +687,12 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
                     elif (p.constant_particle) or (p.lattice_position) or (p.dont_move_overlap):
                         p2.x = uniform(0+2*Particle.radius, Simulation.x_lim-2*Particle.radius)
                         p2.y = uniform(0+2*Particle.radius, Simulation.x_lim-2*Particle.radius)
+                        p2.z = uniform(0+2*Particle.radius, Simulation.x_lim-2*Particle.radius)
                         collision_detected = True
                     else:
                         p.x = uniform(0+2*Particle.radius, Simulation.x_lim-2*Particle.radius)
                         p.y = uniform(0+2*Particle.radius, Simulation.x_lim-2*Particle.radius)
+                        p.z = uniform(0+2*Particle.radius, Simulation.x_lim-2*Particle.radius)
                         collision_detected = True
                     
         if not collision_detected:
@@ -681,7 +752,7 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
 
 
         # locations = None
-        particles = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations, fast_particle, lattice_structure, lattice_size=2)
+        particles = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations, fast_particle, lattice_structure, lattice_size=1)
         Simulation.num_particles = len(particles)
         print(Simulation.num_particles)
         # Initialize visualization
@@ -691,55 +762,41 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
         # Perform simulation
         start = time()
         running = True
-        paths = np.zeros((Simulation.num_steps, len(particles), 6))
+        paths = np.zeros((Simulation.num_steps, len(particles), 7))
         rdf_data = np.zeros((Simulation.num_steps, len(particles), len(particles)))
         colours = np.zeros(len(particles))
         lattice_data = np.zeros(len(particles))
-        # squeez box
-        # by 50% of the simulation, the box should be x times its original size (x<1)
-        # every how many steps should the box decrease by 1 unit?
-        # number of steps to accomplish squeeze = Simulation.num_steps/2
-        squeeze_size = 0.5
-        # amount of change in box limits:
-        # final box_x = x*Simulation.x_lim
-        final_box_x = squeeze_size*Simulation.x_lim
-        # number of increments required:
-        # final x_lim - final_box_x
-        change_amount = Simulation.x_lim - final_box_x
-        print("change amount "+ str(change_amount))
-        # every step how much should the box decrease
-        step_change_squeeze = change_amount/Simulation.num_steps
-        print("step_change_squeeze "+ str(step_change_squeeze))
-
         box = Box(Simulation.x_lim, Simulation.y_lim)
         box_size = np.zeros((Simulation.num_steps, 1))
+            
         for step in tqdm(range(1,Simulation.num_steps)):
             #compute forces
             if squeeze_box:
-                box.set_x(box.box_x - step_change_squeeze)
                 box_size[step] = box.box_x
             for i, p in enumerate(particles):
                 colours[p.id] = 0 if not p.constant_particle else 1
                 lattice_data[p.id] = 0 if not p.lattice_position else 1
                 paths[step][p.id][0] = p.x
                 paths[step][p.id][1] = p.y
+                paths[step][p.id][2] = p.z
                 # kinetic energy
-                paths[step][p.id][2] = p.energy
+                paths[step][p.id][3] = p.energy
 
 
                 # potential energy
                 if record_potential:
-                    paths[step][p.id][3] = p.potential_energy
+                    paths[step][p.id][4] = p.potential_energy
 
                 # forces on walls (used for pressure calcs)
-                paths[step][p.id][4] = p.force_on_wall
+                paths[step][p.id][5] = p.force_on_wall
 
                 # total velocity (since m = 1, p = v)
-                paths[step][p.id][5] = p.total_velocity
+                paths[step][p.id][6] = p.total_velocity
 
 
                 p.new_ax = 0
                 p.new_ay = 0
+                p.new_az = 0
                 p.force_on_wall = 0
                 p.potential_energy = 0
 
@@ -784,67 +841,62 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
             sim_params = pickle.load(inp)
             set_sim_params(sim_params, Simulation)
     
-    window = init_graphics()
-    clock = pygame.time.Clock()
-    myfont = pygame.font.Font('Roboto-Medium.ttf', 10)
+    window = init_graphics3d()
+    # clock = pygame.time.Clock()
+    # myfont = pygame.font.Font('Roboto-Medium.ttf', 10)
     # https://pygamewidgets.readthedocs.io/
     # xcoord, ycoord, width, height, min, max
-    slider = Slider(window, 0, Simulation.WINDOW_HEIGHT + 2*Simulation.SPACING_TEXT, Simulation.WINDOW_WIDTH, 10, min=1, max=1000, step=.05, initial=speed_up)
     counter = 0
     speed_up = speed_up
+    atoms = []
+    print(lattice_data)
+    Simulation.num_particles = len(lattice_data)
+
+    counter = 0
+    for i in range(Simulation.num_particles):
+        
+        x = paths[0][i][0]
+        y = paths[0][i][1]
+        z = paths[0][i][2]
+        if lattice_data[i] == 1:
+            # lattice particle
+            continue
+        color =  vpython.color.blue
+        atoms.append(sphere(pos=vector(x,y,z), radius=Particle.display_radius,color=color))
     
+    # num_points = sum(i < 0 for i in lattice_data)
+    points_list = []
+    for i in range(Simulation.num_particles):
+        x = to_display_scale(paths[0][i][0])
+        y = to_display_scale(paths[0][i][0])
+        z = to_display_scale(paths[0][i][0])
+        if lattice_data[1] == 1:
+            points_list.append(vector(x,y,z))
+    points(pos=points_list, color=vpython.color.red)
+
     while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                running = False
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_p:
-                    pause()
-                elif event.key == pygame.K_ESCAPE:
-                    running = False
-        window.fill(WHITE)
-        draw_line(window, (0,Simulation.WINDOW_HEIGHT), (Simulation.WINDOW_WIDTH, Simulation.WINDOW_HEIGHT))
-        
-        
-        input_speed = slider.getValue()
-        speed_up = input_speed
-        label_speed = myfont.render("Speed: " + str(speed_up), 2, BLACK )
-        window.blit(label_speed, (1, Simulation.WINDOW_HEIGHT + Simulation.SPACING_TEXT))
-        bottom_left_corner = myfont.render("0,0", 1, BLUE)
-        window.blit(bottom_left_corner, (0, 0))
-        top_left_corner = myfont.render("0,1", 1, BLUE)
-        window.blit(top_left_corner, (0, Simulation.WINDOW_HEIGHT-15))     
-        bottom_right_corner = myfont.render("1,0", 1, BLUE)
-        window.blit(bottom_right_corner, (Simulation.WINDOW_WIDTH-15, 0))    
-        top_right_corner = myfont.render("1,1", 1, BLUE)
-        window.blit(top_right_corner, (Simulation.WINDOW_WIDTH-15, Simulation.WINDOW_HEIGHT-15))
+        vpython.rate(300)
         timestep = paths[counter]
         energy_step = np.zeros(len(timestep))
-
+        counter_particles = 0
         for i, p in enumerate(timestep):
-            x = p[0]
-            y = p[1]
-            energy_step[i] = p[2]
-            # print("[" + str(x) + "," + str(y) + "]")
-            color = BLUE if not colours[i] else RED
-            lattice_particle = True if lattice_data[i] else False
-            draw_particle(window, Particle.radius, x, y, color, LIGHT_BLUE, lattice_particle)
-            if label_particles:
-                label = myfont.render(str(i), 2, BLACK )
-                window.blit(label, (to_display_scale(x), to_display_scale(y)))
-        mean_e = sum(energy_step)/len(energy_step)
-        label = myfont.render("Progress {:2.2%}".format(counter/Simulation.num_steps), 2, BLACK )
-        window.blit(label, (1, Simulation.WINDOW_HEIGHT + 1))
-        if squeeze_box:
-            draw_line(window, (to_display_scale(box_size[counter]),Simulation.WINDOW_HEIGHT), (to_display_scale(box_size[counter]), 0))
+            # just a point
+            if lattice_data[i] == 1:
+                # lattice particle
+                continue
+            x = to_display_scale(p[0])
+            y = to_display_scale(p[1])
+            z = to_display_scale(p[2])
+            # energy_step[i] = p[3]
+            # # print("[" + str(x) + "," + str(y) + "]")
+            # color = BLUE if not colours[i] else RED
+            # lattice_particle = True if lattice_data[i] else False
+            atoms[counter_particles].pos = vector(x,y,z)
+            counter_particles += 1
 
-        label_e = myfont.render("Energy {:2}".format(mean_e), 2, BLACK )
-        window.blit(label_e, (1, Simulation.WINDOW_HEIGHT + 3*Simulation.SPACING_TEXT))
-        pygame_widgets.update(event)
-        pygame.display.update()
-        clock.tick(30)
-        counter += int(speed_up)
+        mean_e = sum(energy_step)/len(energy_step)
+
+        counter += 1
         if counter >= Simulation.num_steps:
             counter = 0
 
@@ -876,7 +928,7 @@ def main():
     print("x_lim {}".format(Simulation.x_lim))
     print("y_lim {}".format(Simulation.y_lim))
     print("Particle.radius {}".format(Particle.radius))
-    serial_simulation(1, label_particles=False, nucleation=False, speed_up=25, load_data=True ,sim_name='lattice', record_potential=False, lattice_structure=True)
+    serial_simulation(1, label_particles=False, nucleation=False, speed_up=25, load_data=False ,sim_name='lattice_3d', record_potential=False, lattice_structure=True)
     
 
 # d= distance_point_to_wall((0,0),(10,0),10,10)
