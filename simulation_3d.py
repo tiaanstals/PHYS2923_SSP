@@ -42,10 +42,10 @@ def lj_force_cutoff(r, SIGMA, EPSILON, SIGMA_6):
 
 
 class Simulation(object):
-    num_particles = 10
+    num_particles = 15
     num_steps = 1000
     velocity_scaler = 1
-    lim = 20
+    lim = 10
     x_lim, y_lim = lim, lim
     WINDOW_WIDTH = 600
     WINDOW_HEIGHT = 600
@@ -214,7 +214,7 @@ class Particle(object):
     radius = 1
     mass = 1
 
-    display_radius = 0.9*to_display_scale(radius)
+    display_radius = 0.8*to_display_scale(radius)
 
     dt = Simulation.DT
 
@@ -382,22 +382,6 @@ class Particle(object):
 ###########################
 # MATH FUNCTIONS #
 ###########################
-def distance_point_to_wall(WALL_START, WALL_END, x, y):
-    wall_start_x, wall_start_y = WALL_START
-    wall_end_x, wall_end_y = WALL_END
-     
-    # avoid square root on the bottom (expensive operation) by squaring the top and squaring in closer_than_radius_function
-    d = abs((wall_end_x - wall_start_x)*(wall_start_y-y)-(wall_start_x-x)*(wall_end_y-wall_start_y))**2/((wall_end_x-wall_start_x)**2 + (wall_end_y-wall_start_y)**2)
-    return d
-
-def closer_than_radius(distance):
-    if distance <= Particle.radius:
-        # print("closer")
-        return 1
-    else:
-        # print("further")
-        return 0
-
 def lj_force(r):
     """
     Implementation of the Lennard-Jones potential 
@@ -449,7 +433,7 @@ def lj_force_attractive_only(r):
     inv_r_squared = 1/r_squared
     inv_r_6 = inv_r_squared*inv_r_squared*inv_r_squared
     # constant out front is 24* epsilon/sigma
-    const = 20*24*Simulation.EPSILON/Simulation.SIGMA
+    const = 50*24*Simulation.EPSILON/Simulation.SIGMA
     # by convention repuslive force is positve and attractive force is negative
     # attractive force is -(sigma/r)^6
     attractive = -inv_r_6*inv_r*Simulation.SIGMA_6*Simulation.SIGMA
@@ -515,6 +499,26 @@ def generate_square_matrix_3d(n, x_mid, y_mid, z_mid, nucleation):
                 z.append(z_coord)
     return [x,y,z]
 
+def generate_square_matrix_2halfd(n, x_mid, y_mid, z_mid, nucleation):
+    cube_2 = cube_root(2)
+    first_x = x_mid - cube_2*n*Particle.radius
+    first_y = y_mid - cube_2*n*Particle.radius
+    first_z = z_mid - cube_2*n*Particle.radius
+    x = []
+    y = []
+    z = []
+    for i in range(2*n+1):
+        for j in range(2*n+1):
+            x_coord = first_x + i*cube_2*Particle.radius 
+            y_coord = first_y + j*cube_2*Particle.radius
+            z_coord = 0 + cube_2*Particle.radius
+            if isclose(x_mid, x_coord) and isclose(y_mid,y_coord) and nucleation and isclose(z_mid,z_coord):
+                continue
+            x.append(x_coord)
+            y.append(y_coord)
+            z.append(z_coord)
+    return [x,y,z]
+
 def cube_root(x):
     if 0<=x: return x**(1./3.)
     return -(-x)**(1./3.)
@@ -564,7 +568,7 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
             vz_list.append(p.vz)
     elif lattice_structure:
         # generates a 2d array with coordinates for the lattice
-        locations = generate_square_matrix_3d(lattice_size,0,0,0, nucleation=False)
+        locations = generate_square_matrix_2halfd(lattice_size,0,0,0, nucleation=False)
         # locations = rotate_square_matrix(locations, 20)
         # first create lattice position particles
         particles = []
@@ -574,7 +578,7 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
             particles[i].lattice_position = True
             particles[i].x = Simulation.y_lim/2 + locations[0][i]
             particles[i].y = Simulation.y_lim/2 + locations[1][i]
-            particles[i].z = Simulation.y_lim/2 + locations[2][i]
+            particles[i].z = locations[2][i]
         print(len(particles))
         next_p = i + 1
         minimum = min(locations[0])
@@ -582,20 +586,11 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
         print(minimum)
         print(maximum)
         for i in range(len(locations[0])):
-            outer_edge = False
-            for j in range(3):
-                if isclose(locations[j][i],minimum) or isclose(locations[j][i],maximum):
-                    outer_edge = True
-                    print("i: " + str(i))
-                    print("j: " + str(j))
-            if outer_edge:
-                populate = random() < 0.9
-            else:
-                populate = True
+            populate = random() < 0.9
             particle = Particle(0, 0, 0, 0, 0, 0, 0, 0, 0,next_p)
             particle.x = Simulation.x_lim/2 + locations[0][i]
             particle.y = Simulation.y_lim/2 + locations[1][i]
-            particle.z = Simulation.y_lim/2 + locations[2][i]
+            particle.z = locations[2][i]
             particle.dont_move_overlap = True
             print(populate)
             if populate:
@@ -607,7 +602,7 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
             print(next_p)
         
         # add in some other particles
-        for i in range(round(len(locations[0]) * 0.2)):
+        for i in range(round(len(locations[0]))):
             particle = Particle(0, 0, 0, 0, 0, 0, 0, 0, 0,next_p)
             particle.x = uniform(0+Particle.radius, Simulation.x_lim-Particle.radius)
             particle.y = uniform(0+Particle.radius, Simulation.y_lim-Particle.radius)
@@ -706,7 +701,7 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
 # Serial Simulation #
 #####################
 def serial_simulation(update_interval=1, label_particles=False, normalize_energy=True, nucleation=False, speed_up=5, squeeze_box=False, load_data=False,
-                        sim_name='latest', fast_particle=False, record_potential=False, lattice_structure=False):
+                        sim_name='latest', fast_particle=False, record_potential=False):
 
     # Create particles
     if not load_data:
@@ -719,9 +714,10 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
         # 
         # x = [Particle.radius/2, Particle.radius, Particle.radius/2, -Particle.radius/2, -Particle.radius,-Particle.radius/2]
         # y = [sqrt(3)*Particle.radius/2, 0, -sqrt(3)*Particle.radius/2,-sqrt(3)*Particle.radius/2, 0, sqrt(3)*Particle.radius/2]
+        # z = [0,0,0,0,0,0]
         # x = np.multiply(x,cube_2)
         # y = np.multiply(y,cube_2)
-        # locations = [x, y]
+        # locations = [x, y, z]
         # Simulation.num_particles = len(x)
 
         # conway hexagon
@@ -729,9 +725,11 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
         # r_2 = cube_2*2
         # x = [r_1 * cos(0), r_1 * cos(pi/3), r_1 * cos(2*pi/3), r_1 * cos(pi), r_1 * cos(4*pi/3), r_1 * cos(5*pi/3)]
         # y = [r_1 * sin(0), r_1 * sin(pi/3), r_1 * sin(2*pi/3), r_1 * sin(pi), r_1 * sin(4*pi/3), r_1 * sin(5*pi/3)]
-        # x_2 = [r_2 * cos(pi/2), r_2 * cos(5*pi/6), r_2 * cos(7*pi/6), r_2 * cos(9*pi/6), r_2 * cos(11*pi/6), r_2 * cos(13*pi/6)]
+        # x_2 = [r_2 * cos(pi), r_2 * cos(5*pi/6), r_2 * cos(7*pi/6), r_2 * cos(9*pi/6), r_2 * cos(11*pi/6), r_2 * cos(13*pi/6)]
         # y_2 = [r_2 * sin(pi/2), r_2 * sin(5*pi/6), r_2 * sin(7*pi/6), r_2 * sin(9*pi/6), r_2 * sin(11*pi/6), r_2 * sin(13*pi/6)]
-        # locations = [x+x_2, y+y_2]
+        # z = [0,0,0,0,0,0]
+        # z2 = [0,0,0,0,0,0]
+        # locations = [x+x_2, y+y_2, z+z2]
         # Simulation.num_particles = len(x)
 
         # square
@@ -748,11 +746,12 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
         # Simulation.num_particles = len(locations[0])
 
         # lattice structure
+        lattice_structure=True
         locations = None
 
 
         # locations = None
-        particles = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations, fast_particle, lattice_structure, lattice_size=1)
+        particles = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations, fast_particle, lattice_structure, lattice_size=2)
         Simulation.num_particles = len(particles)
         print(Simulation.num_particles)
         # Initialize visualization
@@ -868,11 +867,12 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
     points_list = []
     for i in range(Simulation.num_particles):
         x = to_display_scale(paths[0][i][0])
-        y = to_display_scale(paths[0][i][0])
-        z = to_display_scale(paths[0][i][0])
+        y = to_display_scale(paths[0][i][1])
+        z = to_display_scale(paths[0][i][2])
         if lattice_data[1] == 1:
             points_list.append(vector(x,y,z))
-    points(pos=points_list, color=vpython.color.red)
+    if points_list:
+        points(pos=points_list, color=vpython.color.red)
 
     while True:
         vpython.rate(300)
@@ -928,7 +928,7 @@ def main():
     print("x_lim {}".format(Simulation.x_lim))
     print("y_lim {}".format(Simulation.y_lim))
     print("Particle.radius {}".format(Particle.radius))
-    serial_simulation(1, label_particles=False, nucleation=False, speed_up=25, load_data=False ,sim_name='lattice_3d', record_potential=False, lattice_structure=True)
+    serial_simulation(1, label_particles=False, nucleation=False, speed_up=25, load_data=True ,sim_name='lattice_3d_2', record_potential=False)
     
 
 # d= distance_point_to_wall((0,0),(10,0),10,10)

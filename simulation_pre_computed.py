@@ -40,9 +40,9 @@ def lj_force_cutoff(r, SIGMA, EPSILON, SIGMA_6):
 
 
 class Simulation(object):
-    num_particles = 50
-    num_steps = 20000
-    velocity_scaler = 0.3
+    num_particles = 20
+    num_steps = 10000
+    velocity_scaler = 1
     lim = 20
     x_lim, y_lim = lim, lim
     WINDOW_WIDTH = 600
@@ -74,14 +74,6 @@ def set_sim_params(params, simulation):
     simulation.SIGMA_6 = params.SIGMA_6
     # simulation.LJ_FORCE_SHIFT= params.LJ_FORCE_SHIFT
     simulation.LONG_RANGE_POTENTIAL_CORRECTION= params.LONG_RANGE_POTENTIAL_CORRECTION
-
-class Box(object):
-    def __init__(self, box_x, box_y):
-        self.box_x = box_x
-        self.box_y = box_y
-    
-    def set_x(self,new_box_x):
-        self.box_x = new_box_x
 
 ###########################
 # Graphics #
@@ -223,12 +215,12 @@ class Particle(object):
         print("new_ax: " + str(self.new_ax))
         print("new_ay: " + str(self.new_ay))
     
-    def compute_wall_forces(self, box):
+    def compute_wall_forces(self):
         energy_before = self.energy
         BOTTOM_LEFT = (0, 0)
-        BOTTOM_RIGHT = (box.box_x, 0)
-        TOP_LEFT = (0, box.box_y)
-        TOP_RIGHT = (box.box_x,box.box_y)
+        BOTTOM_RIGHT = (Simulation.x_lim, 0)
+        TOP_LEFT = (0, Simulation.y_lim)
+        TOP_RIGHT = (Simulation.x_lim,Simulation.y_lim)
         
         horizontal_count = 0
         vertical_count = 0
@@ -399,11 +391,14 @@ def lj_force(r):
     inv_r_6 = inv_r_squared*inv_r_squared*inv_r_squared
     # constant out front is 24* epsilon/sigma
     const = 24*Simulation.EPSILON/Simulation.SIGMA
+    const = 24
     # by convention repuslive force is positve and attractive force is negative
     # repulsive force is 2*(sigma/r)^13
     repulsive = 2*inv_r_6*inv_r_6*inv_r*Simulation.SIGMA_6*Simulation.SIGMA_6*Simulation.SIGMA
+    repulsive = 2*inv_r_6*inv_r_6*inv_r
     # attractive force is -(sigma/r)^6
     attractive = -inv_r_6*inv_r*Simulation.SIGMA_6*Simulation.SIGMA
+    attractive = -inv_r_6*inv_r
     #final force F(r)=-du(r)/dr=24*(epsilon/sigma)*(2*(sigma/r)^13 - (sigma/r)^6) = constant*(repulsive + attractive) + force_shift
     lf = const*(repulsive + attractive)
     return lf
@@ -430,10 +425,12 @@ def lj_force_attractive_only(r):
     inv_r_squared = 1/r_squared
     inv_r_6 = inv_r_squared*inv_r_squared*inv_r_squared
     # constant out front is 24* epsilon/sigma
-    const = 20*24*Simulation.EPSILON/Simulation.SIGMA
+    const = 1.75*24*Simulation.EPSILON/Simulation.SIGMA
+    const = 1.75*24
     # by convention repuslive force is positve and attractive force is negative
     # attractive force is -(sigma/r)^6
     attractive = -inv_r_6*inv_r*Simulation.SIGMA_6*Simulation.SIGMA
+    attractive = -inv_r_6*inv_r
     #final force F(r)=-du(r)/dr=24*(epsilon/sigma)*(2*(sigma/r)^13 - (sigma/r)^6) = constant*(repulsive + attractive) + force_shift
     lf = const*(attractive)
     return lf
@@ -449,12 +446,14 @@ def lj_potential(r):
     inv_r_6 = inv_r_squared*inv_r_squared*inv_r_squared
     # constant out front is 4* epsilon
     const = 4*Simulation.EPSILON
-
+    const = 4
     # by convention repuslive force is positve and attractive force is negative
     # repulsive force is (sigma/r)^12
     repulsive = inv_r_6*inv_r_6*Simulation.SIGMA_6*Simulation.SIGMA_6
+    repulsive = inv_r_6*inv_r_6
     # attractive force is -(sigma/r)^6
-    attractive = -inv_r_6**Simulation.SIGMA_6
+    attractive = -inv_r_6*Simulation.SIGMA_6
+    attractive = -inv_r_6
     lu = const*(repulsive + attractive)
     return lu
 
@@ -500,7 +499,7 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
     """Construct a list of n particles in two dimensions, initially distributed
     evenly but with random velocities. The resulting list is not spatially
     sorted."""
-    seed(2000)
+    seed(7)
     particles = [Particle(0, 0, 0, 0, 0, 0, _) for _ in range(n)]
     next_p = len(particles)
     # Make sure particles are not spatially sorted
@@ -532,7 +531,7 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
         print(len(particles))
         next_p = i + 1
         for i in range(len(locations[0])):
-            populate = random() < 0.95
+            populate = random() < 0.6
             particle = Particle(0,0,0,0,0,0,next_p)
             particle.x = Simulation.x_lim/2 + locations[0][i]
             particle.y = Simulation.y_lim/2 + locations[1][i]
@@ -545,17 +544,17 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
             print(next_p)
         
         # add in some other particles
-        for i in range(round(len(locations[0]) * 0.5)):
-            particle = Particle(0,0,0,0,0,0,next_p)
-            particle.x = uniform(0+Particle.radius, Simulation.x_lim-Particle.radius)
-            particle.y = uniform(0+Particle.radius, Simulation.y_lim-Particle.radius)
-            particle.vx = temp_scale*uniform(-Simulation.x_lim, Simulation.x_lim)
-            particle.vy = temp_scale*uniform(-Simulation.y_lim, Simulation.y_lim)
-            particles.append(particle)
-            vx_list.append(particle.vx)
-            vy_list.append(particle.vy)
-            next_p += 1                
-            print(next_p)
+        # for i in range(round(len(locations[0]) * 0.5)):
+        #     particle = Particle(0,0,0,0,0,0,next_p)
+        #     particle.x = uniform(0+Particle.radius, Simulation.x_lim-Particle.radius)
+        #     particle.y = uniform(0+Particle.radius, Simulation.y_lim-Particle.radius)
+        #     particle.vx = temp_scale*uniform(-Simulation.x_lim, Simulation.x_lim)
+        #     particle.vy = temp_scale*uniform(-Simulation.y_lim, Simulation.y_lim)
+        #     particles.append(particle)
+        #     vx_list.append(particle.vx)
+        #     vy_list.append(particle.vy)
+        #     next_p += 1                
+        #     print(next_p)
     else:
         for p in particles:
             # Distribute particles randomly in our box
@@ -577,7 +576,7 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
         p.vx -= mean_vx
         p.vy -= mean_vy
     if nucleation:
-        new_particle = Particle(Simulation.x_lim/2, Simulation.y_lim/2,0,0,0,0,next_p)
+        new_particle = Particle(Simulation.x_lim/2, Simulation.y_lim/2,2,2,0,0,next_p)
         new_particle.potential_energy = 0
         new_particle.constant_particle = False
         particles.append(new_particle)
@@ -634,7 +633,7 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
 #####################
 # Serial Simulation #
 #####################
-def serial_simulation(update_interval=1, label_particles=False, normalize_energy=True, nucleation=False, speed_up=5, squeeze_box=False, load_data=False,
+def serial_simulation(update_interval=1, label_particles=False, normalize_energy=True, nucleation=False, speed_up=5,load_data=False,
                         sim_name='latest', fast_particle=False, record_potential=False, lattice_structure=False):
 
     # Create particles
@@ -695,29 +694,8 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
         rdf_data = np.zeros((Simulation.num_steps, len(particles), len(particles)))
         colours = np.zeros(len(particles))
         lattice_data = np.zeros(len(particles))
-        # squeez box
-        # by 50% of the simulation, the box should be x times its original size (x<1)
-        # every how many steps should the box decrease by 1 unit?
-        # number of steps to accomplish squeeze = Simulation.num_steps/2
-        squeeze_size = 0.5
-        # amount of change in box limits:
-        # final box_x = x*Simulation.x_lim
-        final_box_x = squeeze_size*Simulation.x_lim
-        # number of increments required:
-        # final x_lim - final_box_x
-        change_amount = Simulation.x_lim - final_box_x
-        print("change amount "+ str(change_amount))
-        # every step how much should the box decrease
-        step_change_squeeze = change_amount/Simulation.num_steps
-        print("step_change_squeeze "+ str(step_change_squeeze))
-
-        box = Box(Simulation.x_lim, Simulation.y_lim)
-        box_size = np.zeros((Simulation.num_steps, 1))
         for step in tqdm(range(1,Simulation.num_steps)):
             #compute forces
-            if squeeze_box:
-                box.set_x(box.box_x - step_change_squeeze)
-                box_size[step] = box.box_x
             for i, p in enumerate(particles):
                 colours[p.id] = 0 if not p.constant_particle else 1
                 lattice_data[p.id] = 0 if not p.lattice_position else 1
@@ -742,6 +720,8 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
                 p.new_ay = 0
                 p.force_on_wall = 0
                 p.potential_energy = 0
+                # if step == Simulation.num_steps/2:
+                #     p.change_temp(.5)
 
                 #compute collision interactions
                 
@@ -754,7 +734,7 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
                         r = p.compute_lattice_forces(p2)
                     rdf_data[step][p.id][p2.id] = r
                     rdf_data[step][p2.id][p.id] = r
-                p.compute_wall_forces(box) 
+                p.compute_wall_forces() 
             
             # Move particles
             for p in particles:
@@ -773,7 +753,9 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
         with open('./simulations/' + sim_name + '/' + 'simulation_params.pkl', 'wb') as output:
             simulation = Simulation()
             pickle.dump(simulation, output, pickle.HIGHEST_PROTOCOL)
-        params_for_analysis = {'x_lim': Simulation.x_lim, 'y_lim': Simulation.y_lim}
+        params_for_analysis = {'x_lim': Simulation.x_lim, 'y_lim': Simulation.y_lim, 
+        'epsilon': Simulation.EPSILON, 'sigma': Simulation.SIGMA,
+        'num_particles': Simulation.num_particles, 'dt': Simulation.DT}
         with open('./simulations/' + sim_name + '/' + 'simulation_params_for_analysis.pkl', 'wb') as output:
             pickle.dump(params_for_analysis, output, pickle.HIGHEST_PROTOCOL)
     else:
@@ -836,8 +818,6 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
         mean_e = sum(energy_step)/len(energy_step)
         label = myfont.render("Progress {:2.2%}".format(counter/Simulation.num_steps), 2, BLACK )
         window.blit(label, (1, Simulation.WINDOW_HEIGHT + 1))
-        if squeeze_box:
-            draw_line(window, (to_display_scale(box_size[counter]),Simulation.WINDOW_HEIGHT), (to_display_scale(box_size[counter]), 0))
 
         label_e = myfont.render("Energy {:2}".format(mean_e), 2, BLACK )
         window.blit(label_e, (1, Simulation.WINDOW_HEIGHT + 3*Simulation.SPACING_TEXT))
@@ -876,7 +856,7 @@ def main():
     print("x_lim {}".format(Simulation.x_lim))
     print("y_lim {}".format(Simulation.y_lim))
     print("Particle.radius {}".format(Particle.radius))
-    serial_simulation(1, label_particles=False, nucleation=False, speed_up=25, load_data=True ,sim_name='lattice', record_potential=False, lattice_structure=True)
+    serial_simulation(1, label_particles=False, nucleation=False, speed_up=25, load_data=False ,sim_name='gas', record_potential=True, lattice_structure=False)
     
 
 # d= distance_point_to_wall((0,0),(10,0),10,10)
