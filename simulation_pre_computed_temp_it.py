@@ -740,11 +740,11 @@ def main():
     print("x_lim {}".format(Simulation.x_lim))
     print("y_lim {}".format(Simulation.y_lim))
     print("Particle.radius {}".format(Particle.radius))
-    temp_range = np.linspace(0.5,2.25,50)
+    temp_range = np.linspace(0.5,1.45,30)
     mean_temps = np.zeros(len(temp_range))
     number_jumps_per_temp = np.zeros(len(temp_range))
     num_per_temp = 5
-    temp_jumps = np.zeros(((num_per_temp-1)*len(temp_range), 2))
+    temp_jumps = np.zeros(((num_per_temp+2)*len(temp_range), 2))
     jump_instances = []
     counter = 0
     for temp_index, temperature_desired in enumerate(temp_range):
@@ -842,8 +842,8 @@ def main():
             temp_jumps[counter][1] = count_num_jumps
             counter += 1
     jump_instances_np = np.array(jump_instances)
-    np.save('./data/temp_jumps_3.npy', temp_jumps)
-    np.save('./data/jump_instances_3.npy', jump_instances_np)
+    np.save('./data/temp_jumps_6.npy', temp_jumps)
+    np.save('./data/jump_instances_6.npy', jump_instances_np)
 
 # d= distance_point_to_wall((0,0),(10,0),10,10)
 # print(d)
