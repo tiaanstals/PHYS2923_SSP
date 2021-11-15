@@ -40,10 +40,10 @@ def lj_force_cutoff(r, SIGMA, EPSILON, SIGMA_6):
 
 
 class Simulation(object):
-    num_particles = 30
-    num_steps = 5000
+    num_particles = 20
+    num_steps = 6000
     velocity_scaler = 1
-    lim = 8
+    lim = 10
     x_lim, y_lim = lim, lim
     WINDOW_WIDTH = 600
     WINDOW_HEIGHT = 600
@@ -491,7 +491,8 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
     """Construct a list of n particles in two dimensions, initially distributed
     evenly but with random velocities. The resulting list is not spatially
     sorted."""
-    seed(7)
+    seed_num = int(random()*100)
+    seed(seed_num)
     particles = [Particle(0, 0, 0, 0, 0, 0, _) for _ in range(n)]
     next_p = len(particles)
     # Make sure particles are not spatially sorted
@@ -520,7 +521,6 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
             particles[i].lattice_position = True
             particles[i].x = Simulation.x_lim/2 + locations[0][i]
             particles[i].y = Simulation.y_lim/2 + locations[1][i]
-        print(len(particles))
         next_p = i + 1
         for i in range(len(locations[0])):
             populate = random() < 0.6
@@ -533,7 +533,6 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
                 vx_list.append(particle.vx)
                 vy_list.append(particle.vy)
                 next_p += 1
-            print(next_p)
         
         # add in some other particles
         # for i in range(round(len(locations[0]) * 0.5)):
@@ -567,27 +566,6 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
     for p in particles:
         p.vx -= mean_vx
         p.vy -= mean_vy
-    if nucleation:
-        new_particle = Particle(Simulation.x_lim/2, Simulation.y_lim/2,2,2,0,0,next_p)
-        new_particle.potential_energy = 0
-        new_particle.constant_particle = False
-        particles.append(new_particle)
-        next_p += 1
-    if fast_particle:
-        speed = 30
-        acc = 20
-        new_particle = Particle(2*Particle.radius,Simulation.y_lim/2,speed,0,acc,0,next_p)
-        particles.append(new_particle)
-        new_particle_2 = Particle(2*Particle.radius,Simulation.y_lim/2 + Particle.radius,speed,0,acc,0,next_p+1)
-        particles.append(new_particle_2)
-        new_particle_3 = Particle(2*Particle.radius,Simulation.y_lim/2 - Particle.radius,speed,0,acc,0,next_p+2)
-        particles.append(new_particle_3)
-        new_particle_4 = Particle(Simulation.x_lim - 2*Particle.radius,Simulation.y_lim/2,-speed,0,-acc,0,next_p+3)
-        particles.append(new_particle_4)
-        new_particle_5 = Particle(Simulation.x_lim - 2*Particle.radius,Simulation.y_lim/2 + Particle.radius,-speed,0,-acc,0,next_p+4)
-        particles.append(new_particle_5)
-        new_particle_6 = Particle(Simulation.x_lim - 2*Particle.radius,Simulation.y_lim/2 - Particle.radius,-speed,0,-acc,0,next_p+5)
-        particles.append(new_particle_6)
     # make sure no particles are overlapping
     overlap = True
     if (locations is not None) and (lattice_structure == False):
@@ -618,7 +596,7 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
         if not collision_detected:
             overlap = False
                 
-    return particles
+    return (particles, seed)
 
 
 
@@ -631,60 +609,17 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
 
     # Create particles
     if not load_data:
-        cube_2 = cube_root(2)
-        #hexagon
-        # equilibrium distance is cuberoot(2)
-        # https://www.wolframalpha.com/input/?i=roots+24*%282%281%2Fx%29%5E13-0.5*%281%2Fx%29%5E7%29
-        # thus all distances should be cuberoot(3)*value
-        # https://www.wolframalpha.com/input/?i=roots+24*%282%281%2Fx%29%5E13-0.5*%281%2Fx%29%5E7%29
-        # 
-        # x = [Particle.radius/2, Particle.radius, Particle.radius/2, -Particle.radius/2, -Particle.radius,-Particle.radius/2]
-        # y = [sqrt(3)*Particle.radius/2, 0, -sqrt(3)*Particle.radius/2,-sqrt(3)*Particle.radius/2, 0, sqrt(3)*Particle.radius/2]
-        # x = np.multiply(x,cube_2)
-        # y = np.multiply(y,cube_2)
-        # locations = [x, y]
-        # Simulation.num_particles = len(x)
-
-        # conway hexagon
-        # r_1 = cube_2
-        # r_2 = cube_2*2
-        # x = [r_1 * cos(0), r_1 * cos(pi/3), r_1 * cos(2*pi/3), r_1 * cos(pi), r_1 * cos(4*pi/3), r_1 * cos(5*pi/3)]
-        # y = [r_1 * sin(0), r_1 * sin(pi/3), r_1 * sin(2*pi/3), r_1 * sin(pi), r_1 * sin(4*pi/3), r_1 * sin(5*pi/3)]
-        # x_2 = [r_2 * cos(pi/2), r_2 * cos(5*pi/6), r_2 * cos(7*pi/6), r_2 * cos(9*pi/6), r_2 * cos(11*pi/6), r_2 * cos(13*pi/6)]
-        # y_2 = [r_2 * sin(pi/2), r_2 * sin(5*pi/6), r_2 * sin(7*pi/6), r_2 * sin(9*pi/6), r_2 * sin(11*pi/6), r_2 * sin(13*pi/6)]
-        # locations = [x+x_2, y+y_2]
-        # Simulation.num_particles = len(x)
-
-        # square
-        # x = [Particle.radius, -Particle.radius, 0,0, Particle.radius, -Particle.radius]
-        # y = [0,0,Particle.radius,-Particle.radius,Particle.radius, -Particle.radius]
-        # x = np.multiply(x,cube_2)
-        # y = np.multiply(y,cube_2)
-        # locations = [x, y]
-        # locations = [x, y]
-        # Simulation.num_particles = len(x)
-
-        # locations = generate_square_matrix(2,0,0, nucleation)
-        # locations = rotate_square_matrix(locations, 20)
-        # Simulation.num_particles = len(locations[0])
 
         # lattice structure
         locations = None
-
-
         # locations = None
-        particles = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations, fast_particle, lattice_structure, lattice_size=2)
+        (particles,seed) = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations, fast_particle, lattice_structure, lattice_size=2)
         Simulation.num_particles = len(particles)
-        print(Simulation.num_particles)
-        # Initialize visualization
-
-        
-
         # Perform simulation
         start = time()
         running = True
         paths = np.zeros((Simulation.num_steps, len(particles), 6))
-        rdf_data = np.zeros((Simulation.num_steps, len(particles), len(particles)))
+        rpaths_data = np.zeros((Simulation.num_steps, len(particles), len(particles)))
         colours = np.zeros(len(particles))
         lattice_data = np.zeros(len(particles))
         temperatures = np.zeros((Simulation.num_steps, 1))
@@ -696,10 +631,6 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
         for step in tqdm(range(1,Simulation.num_steps)):
             #compute forces
             for i, p in enumerate(particles):
-                colours[p.id] = 0 if not p.constant_particle else 1
-                if p.id == 26 or p.id == 37:
-                    colours[p.id] = 1
-                lattice_data[p.id] = 0 if not p.lattice_position else 1
                 paths[step][p.id][0] = p.x
                 paths[step][p.id][1] = p.y
                 # kinetic energy
@@ -711,10 +642,10 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
                     paths[step][p.id][3] = p.potential_energy
 
                 # forces on walls (used for pressure calcs)
-                paths[step][p.id][4] = p.force_on_wall
+                #paths[step][p.id][4] = p.force_on_wall
 
                 # total velocity (since m = 1, p = v)
-                paths[step][p.id][5] = p.total_velocity
+                #paths[step][p.id][5] = p.total_velocity
 
 
                 p.new_ax = 0
@@ -723,8 +654,7 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
                 p.potential_energy = 0
 
                 #start changing temp after 1000 steps
-                if step > temp_change_start and step < temp_change_finish:
-                    # print(sqrt((temperature + temp_step_size)/temperature))
+                if step >= temp_change_start and step <= temp_change_finish:
                     p.change_temp(temperature, temperature + temp_step_size)
 
                 # temp_change = 1
@@ -739,116 +669,23 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
                     # this means one particle is a lattice position
                     if r == -1:
                         r = p.compute_lattice_forces(p2)
-                    rdf_data[step][p.id][p2.id] = r
-                    rdf_data[step][p2.id][p.id] = r
+                    # rpaths_data[step][p.id][p2.id] = r
+                    # rpaths_data[step][p2.id][p.id] = r
+                # particles in center of box
                 p.compute_wall_forces() 
             
             # Move particles
             for p in particles:
                 p.move()
-            if step >= 1000:
+            if step >= 500:
                 if temp_step_size == -1:
                     current_temp = 1/(2*Simulation.num_particles) * sum(paths[step][:,2])
                     temp_step_size = (desired_temp - current_temp)/(temp_change_finish-temp_change_start)
-                    print(temp_step_size)
             temperature = 1/(2*Simulation.num_particles) * sum(paths[step][:,2])
             temperatures[step] = temperature
 
-        try:
-            os.mkdir('./simulations/' + sim_name)
-        except OSError:
-            print ("Creation of the directory failed")
-        else:
-            print ("Successfully created the directory")
-        
-        np.save('./simulations/' + sim_name + '/'+ sim_name + '.npy', paths)
-        np.save('./simulations/' + sim_name + '/'+ sim_name + '_colours.npy', colours)
-        np.save('./simulations/' + sim_name + '/'+ sim_name + '_lattice_data.npy', lattice_data)
-        np.save('./simulations/' + sim_name + '/'+ sim_name + '_rdf_data.npy', rdf_data)
-        np.save('./simulations/' + sim_name + '/'+ sim_name + '_temperatures.npy', rdf_data)
-        with open('./simulations/' + sim_name + '/' + 'simulation_params.pkl', 'wb') as output:
-            simulation = Simulation()
-            pickle.dump(simulation, output, pickle.HIGHEST_PROTOCOL)
-        params_for_analysis = {'x_lim': Simulation.x_lim, 'y_lim': Simulation.y_lim, 
-        'epsilon': Simulation.EPSILON, 'sigma': Simulation.SIGMA,
-        'num_particles': Simulation.num_particles, 'dt': Simulation.DT}
-        with open('./simulations/' + sim_name + '/' + 'simulation_params_for_analysis.pkl', 'wb') as output:
-            pickle.dump(params_for_analysis, output, pickle.HIGHEST_PROTOCOL)
-    else:
-        paths = np.load('./simulations/' + sim_name + '/'+ sim_name + '.npy')
-        colours = np.load('./simulations/' + sim_name + '/'+ sim_name + '_colours.npy')
-        lattice_data = np.load('./simulations/' + sim_name + '/'+ sim_name + '_lattice_data.npy')
-        temperatures = np.load('./simulations/' + sim_name + '/'+ sim_name + '_temperatures.npy')
-        with open('./simulations/' + sim_name + '/' + 'simulation_params.pkl', 'rb') as inp:
-            sim_params = pickle.load(inp)
-            set_sim_params(sim_params, Simulation)
-    
-    window = init_graphics()
-    clock = pygame.time.Clock()
-    myfont = pygame.font.Font('Roboto-Medium.ttf', 10)
-    # https://pygamewidgets.readthedocs.io/
-    # xcoord, ycoord, width, height, min, max
-    slider = Slider(window, 0, Simulation.WINDOW_HEIGHT + 2*Simulation.SPACING_TEXT, Simulation.WINDOW_WIDTH, 10, min=1, max=1000, step=.05, initial=speed_up)
-    counter = 0
-    speed_up = speed_up
-    
-    while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                running = False
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_p:
-                    pause()
-                elif event.key == pygame.K_ESCAPE:
-                    running = False
-        window.fill(WHITE)
-        draw_line(window, (0,Simulation.WINDOW_HEIGHT), (Simulation.WINDOW_WIDTH, Simulation.WINDOW_HEIGHT))
-        
-        
-        input_speed = slider.getValue()
-        speed_up = input_speed
-        label_speed = myfont.render("Speed: " + str(speed_up), 2, BLACK )
-        window.blit(label_speed, (1, Simulation.WINDOW_HEIGHT + Simulation.SPACING_TEXT))
-        bottom_left_corner = myfont.render("0,0", 1, BLUE)
-        window.blit(bottom_left_corner, (0, 0))
-        top_left_corner = myfont.render("0,1", 1, BLUE)
-        window.blit(top_left_corner, (0, Simulation.WINDOW_HEIGHT-15))     
-        bottom_right_corner = myfont.render("1,0", 1, BLUE)
-        window.blit(bottom_right_corner, (Simulation.WINDOW_WIDTH-15, 0))    
-        top_right_corner = myfont.render("1,1", 1, BLUE)
-        window.blit(top_right_corner, (Simulation.WINDOW_WIDTH-15, Simulation.WINDOW_HEIGHT-15))
-        timestep = paths[counter]
-        energy_step = np.zeros(len(timestep))
 
-        for i, p in enumerate(timestep):
-            x = p[0]
-            y = p[1]
-            energy_step[i] = p[2]
-            # print("[" + str(x) + "," + str(y) + "]")
-            color = BLUE if not colours[i] else RED
-            lattice_particle = True if lattice_data[i] else False
-            draw_particle(window, Particle.radius, x, y, color, LIGHT_BLUE, lattice_particle)
-
-            label = myfont.render(str(i), 2, BLACK )
-            window.blit(label, (to_display_scale(x), to_display_scale(y)))
-        mean_e = sum(energy_step)/len(energy_step)
-        label = myfont.render("Progress {:2.2%}".format(counter/Simulation.num_steps), 2, BLACK )
-        window.blit(label, (1, Simulation.WINDOW_HEIGHT + 1))
-        temperature = temperatures[counter]
-        label_e = myfont.render("Temperature {:2}".format(mean_e), 2, BLACK )
-        window.blit(label_e, (1, Simulation.WINDOW_HEIGHT + 3*Simulation.SPACING_TEXT))
-        pygame_widgets.update(event)
-        pygame.display.update()
-        clock.tick(30)
-        counter += int(speed_up)
-        if counter >= Simulation.num_steps:
-            counter = 0
-
-
-    end = time()
-
-    print('serial simulation took {0} seconds'.format(end - start))
+    return (paths, Simulation, temperatures)
 
 def pause():
     paused = True
@@ -867,16 +704,146 @@ def pause():
 ##########################
 # MAIN #
 ##########################
+# find the closest grid location for each particle
+def find_closest_grid_locs(locations, grid_locations, num_real_particles):
+    closest_grid_locations = np.zeros(num_real_particles)
+    indexes_atoms = np.zeros(num_real_particles)
+    for j, location in enumerate(locations):
+        closest = 400
+        closest_index = -1
+        for i, grid_point in enumerate(grid_locations):
+            r2 = (location[0] - grid_point[0])**2 + (location[1] - grid_point[1])**2
+            if r2 < closest:
+                closest = r2
+                closest_index = i
+        closest_grid_locations[j] = closest_index
+        indexes_atoms[j] = 25+j
+    return (closest_grid_locations, indexes_atoms)
+
+
+def find_indexes_of_sites_close(index_of_site,imaginary_grid_locations,dist_between_absorption_sites,dist_between_diagonal_absorption_sites):
+    x = imaginary_grid_locations[index_of_site][0]
+    y = imaginary_grid_locations[index_of_site][1]
+    indexes_close = []
+    indexes_diagonal = []
+    for i, site in enumerate(imaginary_grid_locations):
+        r2 = (x - site[0])**2 + (y-site[1])**2
+        # make sure to not count the site itself
+        if r2 < dist_between_absorption_sites*1.1 and r2 > dist_between_absorption_sites*0.9:
+            indexes_close.append(i)
+        if r2 < dist_between_diagonal_absorption_sites*1.1 and r2 > dist_between_diagonal_absorption_sites*0.9:
+            indexes_diagonal.append(i)
+    return (indexes_close, indexes_diagonal)
 
 def main():
     pygame.init()
     print("x_lim {}".format(Simulation.x_lim))
     print("y_lim {}".format(Simulation.y_lim))
     print("Particle.radius {}".format(Particle.radius))
-    serial_simulation(1, label_particles=True, nucleation=False, speed_up=25, load_data=False,
-                        sim_name='liquid_energy', record_potential=True, lattice_structure=True,
-                        desired_temp=0, temp_change_finish=15000, temp_change_start=15000)
-    
+    temp_range = np.linspace(0.5,2.25,50)
+    mean_temps = np.zeros(len(temp_range))
+    number_jumps_per_temp = np.zeros(len(temp_range))
+    num_per_temp = 5
+    temp_jumps = np.zeros(((num_per_temp-1)*len(temp_range), 2))
+    jump_instances = []
+    counter = 0
+    for temp_index, temperature_desired in enumerate(temp_range):
+        for rand_attempt in range(num_per_temp):
+            print("Beginning iteration for desired temp = " + str(temperature_desired))
+            (paths, simulation, temperatures) = serial_simulation(1, label_particles=True, nucleation=False, speed_up=25, load_data=False,
+                                sim_name='lattice_diffusion_2d', record_potential=False, lattice_structure=True,
+                                desired_temp=temperature_desired, temp_change_finish=3000, temp_change_start=1500)
+            
+            # start analysis
+            # for mean temp we want mean temp after step 3000
+            temp_jumps[counter][0] = sum(temperatures[3000:])/len(temperatures[3000:])
+            # grid locations for imaginary particles
+            grid_locations = paths[1][:25][:,0:2]
+            num_real_particles = simulation.num_particles - 25
+            dist_between_absorption_sites = (paths[1][0][0] - paths[1][1][0])**2 + (paths[1][0][1] - paths[1][1][1])**2
+
+            # 0 is the first, index 5 to the right, 6 diagonal
+            dist_between_diagonal_absorption_sites = (paths[1][0][0] - paths[1][6][0])**2 + (paths[1][0][1] - paths[1][6][1])**2
+
+            
+
+
+            grid_locs_arr = np.zeros((num_real_particles, len(paths[1:])))
+            absorption_indexes_arr = np.zeros((num_real_particles, len(paths[1:])))
+            atom_indexes_arr = np.zeros((num_real_particles, len(paths[1:])))
+            for i in range(1,len(paths[1:])):
+                locations = paths[i][25:][:,0:2]
+                (closest_grid_locations, indexes_atoms) = find_closest_grid_locs(locations, grid_locations, num_real_particles)
+                
+                grid_locs_arr[:,i] = closest_grid_locations
+                atom_indexes_arr[:,i] = indexes_atoms
+            imaginary_grid_locations = paths[1][:25][:,0:2]
+
+
+            num_sites_occupied_before_jump_list = []
+            percentage_available_sites_occupied_list = []
+            num_sites_occupied_before_jump_list_diagonal = []
+            percentage_available_sites_occupied_list_diagonal = []
+
+            count_num_jumps = 0
+            for i in range(2,len(paths[2:])):
+                # this implies a particle transitioned
+                if not (grid_locs_arr[:,i] == grid_locs_arr[:,i-1]).all():
+                    # now find the particle that moved
+                    for j in range(num_real_particles):
+                        if grid_locs_arr[j,i] != grid_locs_arr[j,i-1]:
+                            count_num_jumps += 1
+                            #index here is the index of the closest absorption site
+                            print("index_absorption: " +str(grid_locs_arr[j,i-1]))
+                            
+                            #index here is the index of the atom
+                            print("index_atom: " +str(atom_indexes_arr[j,i]))
+                            
+                            #closest absorption site before jump
+                            grid_locs_arr[j,i-1]
+                            #now need to calculate the number of particles which has the closest absorption site
+                            #which is within 2r of this site
+                            
+                            #1. find list of absorption sites within 2r before jump (this doesnt change with i)
+                            sites, sites_diagonal = find_indexes_of_sites_close(int(grid_locs_arr[j,i-1]), imaginary_grid_locations, dist_between_absorption_sites
+                                                    , dist_between_diagonal_absorption_sites)
+                            
+                            #2. check how many of these sites were occupied for i-1
+                            count_sites = len(sites)
+                            count_sites_diagonal = len(sites_diagonal)
+                            count_sites_total = count_sites + count_sites_diagonal
+                            occupied = 0
+                            for abs_site_index in sites:
+                                for closest_site_index in grid_locs_arr[:,i-1]:
+                                    if int(closest_site_index) == abs_site_index:
+                                        occupied += 1
+                            occupied_diagonal = 0
+                            for abs_site_index in sites_diagonal:
+                                for closest_site_index in grid_locs_arr[:,i-1]:
+                                    if int(closest_site_index) == abs_site_index:
+                                        occupied_diagonal += 1
+                            occupied_total = occupied + occupied_diagonal
+                            
+                            print("count_sites = " + str(count_sites))
+                            print("count_sites_diagonal = " + str(count_sites_diagonal))
+                            print("count_sites_total = " + str(count_sites_total))
+                            print("count_occupied = " + str(occupied))
+                            print("count_occupied_diagonal = " + str(occupied_diagonal))
+                            print("count_occupied_total = " + str(occupied_total))
+                            occupied_percentage = occupied/count_sites
+                            occupied_diagonal_percentage = occupied_diagonal/count_sites_diagonal
+                            occupied_total_percentage = occupied_total/count_sites_total
+                            jump_instance = [count_sites, count_sites_diagonal, count_sites_total, occupied, 
+                                            occupied_diagonal,occupied_total,occupied_percentage,occupied_diagonal_percentage,occupied_total_percentage,
+                                            temperatures[i][0]]
+                            print(jump_instance)
+                            jump_instances.append(np.array(jump_instance))
+                            
+            temp_jumps[counter][1] = count_num_jumps
+            counter += 1
+    jump_instances_np = np.array(jump_instances)
+    np.save('./data/temp_jumps_3.npy', temp_jumps)
+    np.save('./data/jump_instances_3.npy', jump_instances_np)
 
 # d= distance_point_to_wall((0,0),(10,0),10,10)
 # print(d)

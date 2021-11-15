@@ -43,9 +43,9 @@ def lj_force_cutoff(r, SIGMA, EPSILON, SIGMA_6):
 
 class Simulation(object):
     num_particles = 15
-    num_steps = 1000
-    velocity_scaler = 1
-    lim = 10
+    num_steps = 10000
+    velocity_scaler = 0.9
+    lim = 20
     x_lim, y_lim = lim, lim
     WINDOW_WIDTH = 600
     WINDOW_HEIGHT = 600
@@ -129,44 +129,21 @@ def init_graphics3d():
     animation.caption = s
 
     d = L
-    r = Simulation.WINDOW_HEIGHT/100
-    boxbottom = curve(color=gray, radius=r)
-    boxbottom.append([vector(0,0,0), vector(d,0,0), vector(d,d,0), vector(0,d,0), vector(0,0,0)])
-    boxtop = curve(color=gray, radius=r)
-    boxtop.append([vector(0,0,d), vector(d,0,d), vector(d,d,d), vector(0,d,d), vector(0,0,d)])
-    vert1 = curve(color=gray, radius=r)
-    vert2 = curve(color=gray, radius=r)
-    vert3 = curve(color=gray, radius=r)
-    vert4 = curve(color=gray, radius=r)
-    vert1.append([vector(0,0,0), vector(0,0,d)])
-    vert2.append([vector(d,0,0), vector(d,0,d)])
-    vert3.append([vector(d,d,0), vector(d,d,d)])
-    vert4.append([vector(0,d,0), vector(0,d,d)])
-    # animation = vpython.canvas( width=Simulation.WINDOW_WIDTH, height=Simulation.WINDOW_WIDTH, align='left')
-    # animation.range = Simulation.WINDOW_WIDTH
-    # animation.title = 'A "hard-sphere" gas'
-    # s = """  Theoretical and averaged speed distributions (meters/sec).
-    # Initially all atoms have the same speed, but collisions
-    # change the speeds of the colliding atoms. One of the atoms is
-    # marked and leaves a trail so you can follow its path.
-    
-    # """
-    # animation.caption = s
-    # gray =  vpython.color.gray(0.7)
-    # r = 0.005
-    # d = Simulation.WINDOW_WIDTH
-    # boxbottom = vpython.curve(color=gray, radius=r)
-    # boxbottom.append([vector(-d,-d,-d), vector(-d,-d,d), vector(d,-d,d), vector(d,-d,-d), vector(-d,-d,-d)])
+    r = Simulation.WINDOW_HEIGHT/150
+    # boxbottom = curve(color=gray, radius=r)
+    # boxbottom.append([vector(0,0,0), vector(d,0,0), vector(d,d,0), vector(0,d,0), vector(0,0,0)])
     # boxtop = curve(color=gray, radius=r)
-    # boxtop.append([vector(-d,d,-d), vector(-d,d,d), vector(d,d,d), vector(d,d,-d), vector(-d,d,-d)])
+    # boxtop.append([vector(0,0,d), vector(d,0,d), vector(d,d,d), vector(0,d,d), vector(0,0,d)])
     # vert1 = curve(color=gray, radius=r)
     # vert2 = curve(color=gray, radius=r)
     # vert3 = curve(color=gray, radius=r)
     # vert4 = curve(color=gray, radius=r)
-    # vert1.append([vector(-d,-d,-d), vector(-d,d,-d)])
-    # vert2.append([vector(-d,-d,d), vector(-d,d,d)])
-    # vert3.append([vector(d,-d,d), vector(d,d,d)])
-    # vert4.append([vector(d,-d,-d), vector(d,d,-d)])
+    # vert1.append([vector(0,0,0), vector(0,0,d)])
+    # vert2.append([vector(d,0,0), vector(d,0,d)])
+    # vert3.append([vector(d,d,0), vector(d,d,d)])
+    # vert4.append([vector(0,d,0), vector(0,d,d)])
+
+    
     return animation
 
 def draw_line(window, coord_1, coord_2):
@@ -497,6 +474,40 @@ def generate_square_matrix_3d(n, x_mid, y_mid, z_mid, nucleation):
                 x.append(x_coord)
                 y.append(y_coord)
                 z.append(z_coord)
+    x_mid = 4*cube_root(2)
+    y_mid = 0
+    z_mid = 0
+    first_x = x_mid - cube_2*n*Particle.radius
+    first_y = y_mid - cube_2*n*Particle.radius
+    first_z = z_mid - cube_2*n*Particle.radius
+    for i in range(2*n+1):
+        for j in range(2*n+1):
+            for k in range(2*n+1):
+                x_coord = first_x + i*cube_2*Particle.radius 
+                y_coord = first_y + j*cube_2*Particle.radius
+                z_coord = first_z + k*cube_2*Particle.radius
+                if isclose(x_mid, x_coord) and isclose(y_mid,y_coord) and nucleation and isclose(z_mid,z_coord):
+                    continue
+                x.append(x_coord)
+                y.append(y_coord)
+                z.append(z_coord)
+    x_mid = -4*cube_root(2)
+    y_mid = 0
+    z_mid = 0
+    first_x = x_mid - cube_2*n*Particle.radius
+    first_y = y_mid - cube_2*n*Particle.radius
+    first_z = z_mid - cube_2*n*Particle.radius
+    for i in range(2*n+1):
+        for j in range(2*n+1):
+            for k in range(2*n+1):
+                x_coord = first_x + i*cube_2*Particle.radius 
+                y_coord = first_y + j*cube_2*Particle.radius
+                z_coord = first_z + k*cube_2*Particle.radius
+                if isclose(x_mid, x_coord) and isclose(y_mid,y_coord) and nucleation and isclose(z_mid,z_coord):
+                    continue
+                x.append(x_coord)
+                y.append(y_coord)
+                z.append(z_coord)
     return [x,y,z]
 
 def generate_square_matrix_2halfd(n, x_mid, y_mid, z_mid, nucleation):
@@ -566,6 +577,20 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
             vx_list.append(p.vx)
             vy_list.append(p.vy)
             vz_list.append(p.vz)
+        # for i in range(round(len(locations[0])/2)):
+        #     particle = Particle(0, 0, 0, 0, 0, 0, 0, 0, 0,next_p)
+        #     particle.x = uniform(0+Particle.radius, Simulation.x_lim-Particle.radius)
+        #     particle.y = uniform(0+Particle.radius, Simulation.y_lim-Particle.radius)
+        #     particle.z = uniform(0+Particle.radius, Simulation.y_lim-Particle.radius)
+        #     particle.vx = temp_scale*uniform(-Simulation.x_lim, Simulation.x_lim)
+        #     particle.vy = temp_scale*uniform(-Simulation.y_lim, Simulation.y_lim)
+        #     particle.vz = temp_scale*uniform(-Simulation.y_lim, Simulation.y_lim)
+        #     particles.append(particle)
+        #     vx_list.append(particle.vx)
+        #     vy_list.append(particle.vy)
+        #     vz_list.append(particle.vz)
+        #     next_p += 1                
+        #     print(next_p)
     elif lattice_structure:
         # generates a 2d array with coordinates for the lattice
         locations = generate_square_matrix_2halfd(lattice_size,0,0,0, nucleation=False)
@@ -588,8 +613,8 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
         for i in range(len(locations[0])):
             populate = random() < 0.9
             particle = Particle(0, 0, 0, 0, 0, 0, 0, 0, 0,next_p)
-            particle.x = Simulation.x_lim/2 + locations[0][i]
-            particle.y = Simulation.y_lim/2 + locations[1][i]
+            particle.x = Simulation.y_lim/2 + locations[0][i]
+            particle.y = Simulation.y_lim/2 +  locations[1][i]
             particle.z = locations[2][i]
             particle.dont_move_overlap = True
             print(populate)
@@ -602,7 +627,7 @@ def make_particles(n, temp_scale, nucleation, locations, fast_particle=False, la
             print(next_p)
         
         # add in some other particles
-        for i in range(round(len(locations[0]))):
+        for i in range(round(len(locations[0])/2)):
             particle = Particle(0, 0, 0, 0, 0, 0, 0, 0, 0,next_p)
             particle.x = uniform(0+Particle.radius, Simulation.x_lim-Particle.radius)
             particle.y = uniform(0+Particle.radius, Simulation.y_lim-Particle.radius)
@@ -741,17 +766,17 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
         # locations = [x, y]
         # Simulation.num_particles = len(x)
 
-        # locations = generate_square_matrix(2,0,0, nucleation)
-        # locations = rotate_square_matrix(locations, 20)
-        # Simulation.num_particles = len(locations[0])
+        locations = generate_square_matrix_3d(1,0,0,0, nucleation)
+        # # locations = rotate_square_matrix(locations, 20)
+        Simulation.num_particles = len(locations[0])
 
         # lattice structure
-        lattice_structure=True
-        locations = None
+        # lattice_structure=True
+        # locations = None
 
 
         # locations = None
-        particles = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations, fast_particle, lattice_structure, lattice_size=2)
+        particles = make_particles(Simulation.num_particles, Simulation.velocity_scaler, nucleation, locations, fast_particle, lattice_structure=False, lattice_size=3)
         Simulation.num_particles = len(particles)
         print(Simulation.num_particles)
         # Initialize visualization
@@ -767,14 +792,22 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
         lattice_data = np.zeros(len(particles))
         box = Box(Simulation.x_lim, Simulation.y_lim)
         box_size = np.zeros((Simulation.num_steps, 1))
+        for p in particles:
+            if p.dont_move_overlap:
+                colours[p.id] = 1
+            else:
+                colours[p.id] = 0
+            if p.lattice_position:
+                lattice_data[p.id] = 1
+            else:
+                lattice_data[p.id] = 0
             
         for step in tqdm(range(1,Simulation.num_steps)):
             #compute forces
             if squeeze_box:
                 box_size[step] = box.box_x
             for i, p in enumerate(particles):
-                colours[p.id] = 0 if not p.constant_particle else 1
-                lattice_data[p.id] = 0 if not p.lattice_position else 1
+                
                 paths[step][p.id][0] = p.x
                 paths[step][p.id][1] = p.y
                 paths[step][p.id][2] = p.z
@@ -857,22 +890,26 @@ def serial_simulation(update_interval=1, label_particles=False, normalize_energy
         x = paths[0][i][0]
         y = paths[0][i][1]
         z = paths[0][i][2]
-        if lattice_data[i] == 1:
-            # lattice particle
-            continue
-        color =  vpython.color.blue
-        atoms.append(sphere(pos=vector(x,y,z), radius=Particle.display_radius,color=color))
+        green = vpython.color.green
+        blue = vpython.color.blue
+        if colours[i] == 1:
+            color = blue
+        else:
+            color = green
+        if lattice_data[i] != 1:
+                # lattice particle
+            atoms.append(sphere(pos=vector(x,y,z), radius=Particle.display_radius,color=color))
     
     # num_points = sum(i < 0 for i in lattice_data)
-    points_list = []
-    for i in range(Simulation.num_particles):
-        x = to_display_scale(paths[0][i][0])
-        y = to_display_scale(paths[0][i][1])
-        z = to_display_scale(paths[0][i][2])
-        if lattice_data[1] == 1:
-            points_list.append(vector(x,y,z))
-    if points_list:
-        points(pos=points_list, color=vpython.color.red)
+    # points_list = []
+    # for i in range(Simulation.num_particles):
+    #     x = to_display_scale(paths[0][i][0])
+    #     y = to_display_scale(paths[0][i][1])
+    #     z = to_display_scale(paths[0][i][2])
+    #     if lattice_data[1] == 1:
+    #         points_list.append(vector(x,y,z))
+    # if points_list:
+    #     points(pos=points_list, color=vpython.color.red)
 
     while True:
         vpython.rate(300)
@@ -928,7 +965,7 @@ def main():
     print("x_lim {}".format(Simulation.x_lim))
     print("y_lim {}".format(Simulation.y_lim))
     print("Particle.radius {}".format(Particle.radius))
-    serial_simulation(1, label_particles=False, nucleation=False, speed_up=25, load_data=True ,sim_name='lattice_3d_2', record_potential=False)
+    serial_simulation(1, label_particles=False, nucleation=False, speed_up=25, load_data=False ,sim_name='3d_cube', record_potential=False)
     
 
 # d= distance_point_to_wall((0,0),(10,0),10,10)
